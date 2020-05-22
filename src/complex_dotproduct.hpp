@@ -5,10 +5,10 @@
 
 struct Complex {
     int16_t real;
-    int16_t image;
+    int16_t imag;
     Complex& operator+(const Complex& rhs){ 
             real += rhs.real;
-            image += rhs.image;
+            imag += rhs.imag;
             return *this;
     }
 };
@@ -41,12 +41,12 @@ Complex hsum8x32(__m256i v);
 // Unused for now
 Complex hsum16x32(__m512i v);
 
-// returns vec1 * vec2, where each vector contains 8 Complex numbers (int16 real + int16 image = 32 bits each)
+// returns vec1 * vec2, where each vector contains 8 Complex numbers (int16 real + int16 imag = 32 bits each)
 // Adapted Matt Scarpino's approach but for int16 instead of float
 // https://www.codeproject.com/Articles/874396/Crunching-Numbers-with-AVX-and-AVX
 __m256i _mm256_myComplexMult_epi16(__m256i vec1, __m256i vec2);
 
-// a dot b, where a and b are vectors with 16 elements, each a 32 bit complex number {int16 real, int16 image}
+// a dot b, where a and b are vectors with 16 elements, each a 32 bit complex number {int16 real, int16 imag}
 Complex dotProduct16x32(__m512i a, __m512i b);
 
 #endif

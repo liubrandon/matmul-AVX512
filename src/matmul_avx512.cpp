@@ -28,7 +28,7 @@ void matmulAVX512(const Complex* A, int r1, int c1, const Complex* B, int c2, Co
 void printMatrix(const Complex* mat, int rows, int cols) {
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
-            printf("(%4d, %4d) ", mat[i * cols + j].real, mat[i * cols + j].image);
+            printf("(%d,%d) ", mat[i * cols + j].real, mat[i * cols + j].imag);
         }
         printf("\n");
     }
@@ -39,8 +39,9 @@ bool matricesEqual(const Complex* C, arma::cx_fmat& armaC) {
     arma::cx_fmat::iterator it = armaC.begin();
     arma::cx_fmat::iterator itEnd = armaC.end();
     for (int i = 0; it != itEnd; it++, i++) {
-        // if ((*it) != C[i])
-        //     return false;
+        if (C[i].real != (int16_t)(*it).real() || C[i].imag != (int16_t)(*it).imag()) {
+            return false;
+        }
     }
     return true;
 }
@@ -50,8 +51,9 @@ bool matricesEqual(const Complex* C, arma::cx_fmat& armaC) {
 // if mod is 0 then fill with zeros
 void generateMatrix(Complex* mat, int size, int mod = 30) {
     Complex zero = {0,0};
-    for (int i = 0; i < size; i++) {
-        Complex num = {i%mod, i%mod};
+    for(int i = 0; i < size; i++) {
+        int16_t ri = static_cast<int16_t>((i%mod)+1);
+        Complex num = {ri, ri};
         mat[i] = mod ? num : zero;
     }
 }
@@ -77,12 +79,17 @@ double runArmaBenchmark(arma::cx_fmat& armaA, arma::cx_fmat& armaB, arma::cx_fma
 
 // Copies int16_t integers stored in source and converts them to floating point
 // and stores them in dest; rows x cols is the size of both matrices
-void int16MatrixToArmaFloat(Complex* source, arma::cx_fmat& dest, int rows, int cols) {
+arma::cx_fmat complexMatrixToArma(Complex* source, int rows, int cols) {
+    arma::fmat real(rows, cols);
+    arma::fmat imag(rows, cols);
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
-            //dest(i, j) = (float)source[i * cols + j];
+            real(i, j) = source[i * cols + j].real;
+            imag(i, j) = source[i * cols + j].imag;
         }
     }
+    arma::cx_fmat armaCopy(real, imag);
+    return armaCopy;
 }
 
 // Supresses ISO C++ warning about variable length array
@@ -95,21 +102,25 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
     Complex B[NCOLS] __attribute__((aligned(64)));         // B is a 32 x 1 matrix (vector)
     Complex C[NCOLS] __attribute__((aligned(64)));         // C is the 32 x 1 resulting matrix
     // Initialize matrices for AVX
-    generateMatrix(A, NROWS * NCOLS, 40);
-    generateMatrix(B, NCOLS, 40);
+    generateMatrix(A, NROWS * NCOLS, 5);
+    generateMatrix(B, NCOLS, 5);
     generateMatrix(C, NCOLS, 0); // initialize C to all 0s
-    // Initialize matrices for Armadillo
-    arma::cx_fmat armaA(NROWS, NCOLS);
-    arma::cx_fmat armaB(NCOLS, 1);
-    arma::cx_fmat armaC(NROWS, 1);
-    int16MatrixToArmaFloat(A, armaA, NROWS, NCOLS);
-    int16MatrixToArmaFloat(B, armaB, NCOLS, 1);
-    int16MatrixToArmaFloat(C, armaC, NROWS, 1);
-    //armaA = armaA.t(); // Armadillo copies the matrices column major (?), so transpose A
+
+    // printMatrix(A, NROWS, NCOLS);
+    // printMatrix(B, NROWS, 1);
+    // printMatrix(C, NROWS, 1);
+    
+    // Initialize matrices for Armadillo (Copy from A, B, C)
+    arma::cx_fmat armaA = complexMatrixToArma(A, NROWS, NCOLS);
+    arma::cx_fmat armaB = complexMatrixToArma(B, NCOLS, 1);
+    arma::cx_fmat armaC = complexMatrixToArma(C, NROWS, 1);
+    
     // Run benchmarks for both AVX and Armadillo
     double avxTime = runAVXBenchmark(A, NROWS, NCOLS, B, C, numIter);
     double armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
     // Assert the resulting matrices are the same
+    printMatrix(C, NROWS, 1);
+    std::cout << armaC;
     assert(matricesEqual(C, armaC));
     // Output results
     double avgAVX = avxTime / (double)numIter;
@@ -128,39 +139,49 @@ static int showUsage(char *prog) {
     return 1;
 }
 
-int main() {
-    __m256i vec1 = _mm256_setr_epi16(4, 5, 13, 6, 1, 2, 3, 4, 5,  6,  7,  8,  9,  10, 11, 12);
-    __m256i vec2 = _mm256_setr_epi16(9, 3, 6,  7, 5, 6, 7, 8, 9,  10, 11, 12, 13, 14, 15, 16);
-    __m256i res = _mm256_myComplexMult_epi16(vec1, vec2);
-    print_m256i(res);
-    Complex sum = hsum8x32(res);
-    printf("real: %d, image: %d\n", sum.real, sum.image);
+// int main() {
+//     __m256i vec1 = _mm256_setr_epi16(4, 5, 13, 6, 1, 2, 3, 4, 5,  6,  7,  8,  9,  10, 11, 12);
+//     __m256i vec2 = _mm256_setr_epi16(9, 3, 6,  7, 5, 6, 7, 8, 9,  10, 11, 12, 13, 14, 15, 16);
+//     __m256i res = _mm256_myComplexMult_epi16(vec1, vec2);
+//     print_m256i(res);
+//     Complex sum = hsum8x32(res);
+//     printf("real: %d, imag: %d\n", sum.real, sum.imag);
 
-    return 0;
-}
-
-// int main(int argc, char** argv) {
-//     if(argc == 1) {
-//         runBenchmarks();
-//     }
-//     else if(argc == 2) {
-//         if(strcmp(argv[1], "-v") == 0) {
-//             setenv("MKL_VERBOSE", "1", 1);
-//             runBenchmarks();
-//         } else {
-//             unsigned long iterations = strtoul(argv[1], NULL, 0);
-//             runBenchmarks(iterations);
-//         }
-//     } else if(argc == 3) {
-//         if(strcmp(argv[1], "-v") == 0) {
-//             setenv("MKL_VERBOSE", "1", 1);
-//             unsigned long iterations = strtoul(argv[2], NULL, 0);
-//             runBenchmarks(iterations);
-//         } else {
-//             return showUsage(argv[0]);
-//         }
-//     } else {
-//         return showUsage(argv[0]);
-//     }
 //     return 0;
 // }
+
+// trying to get complex dot product working so I compare with it
+void testArmaDot() {
+    arma::cx_fvec test(5);
+    test.fill(arma::cx_float(2, 1));
+    arma::cx_float testDot = dot(test, test);
+    std::cout << testDot;
+    assert(1==0); // stop here;
+}
+
+int main(int argc, char** argv) {
+    testArmaDot();
+    if(argc == 1) {
+        runBenchmarks();
+    }
+    else if(argc == 2) {
+        if(strcmp(argv[1], "-v") == 0) {
+            setenv("MKL_VERBOSE", "1", 1);
+            runBenchmarks();
+        } else {
+            unsigned long iterations = strtoul(argv[1], NULL, 0);
+            runBenchmarks(iterations);
+        }
+    } else if(argc == 3) {
+        if(strcmp(argv[1], "-v") == 0) {
+            setenv("MKL_VERBOSE", "1", 1);
+            unsigned long iterations = strtoul(argv[2], NULL, 0);
+            runBenchmarks(iterations);
+        } else {
+            return showUsage(argv[0]);
+        }
+    } else {
+        return showUsage(argv[0]);
+    }
+    return 0;
+}

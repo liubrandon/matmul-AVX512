@@ -40,13 +40,13 @@ void print_m128i(__m128i v) {
 }
 
 // dotProduct32x16() helper functions below
-// Adapted Peter Cordes' 2/20/2020 horizontal sum but for Complex int16 instead of int32
+// Adapted Peter Cordes' 2/20/2020 horizontal sum but rewrote for Complex int16 numbers
 // https://stackoverflow.com/questions/60108658/fastest-method-to-calculate-sum-of-all-packed-32-bit-integers-using-avx512-or-av
 
 // Sums the 4 Complex numbers packed into v
 Complex hsum4x32(__m128i v) {
-    //    (c1  c2  c3 c4) v 
-    // +  (c3  c4   0  0) _mm_permutexvar_epi16(_mm_setr_epi16(4,5,6,7,0,0,0,0)
+    //    (c1  c2  c3 c4) is v 
+    // +  (c3  c4   0  0) is _mm_permutexvar_epi16(_mm_setr_epi16(4,5,6,7,0,0,0,0))
     //  ------------------
     //    (c5  c6  c3 c4) c5 and c6 are the resulting complex numbers (last two values here are ignored)
     __m128i r1 = _mm_add_epi16(v, _mm_permutexvar_epi16(_mm_setr_epi16(4,5,6,7,0,0,0,0), v));
@@ -58,15 +58,9 @@ Complex hsum4x32(__m128i v) {
     // Now we can add the real and imaginary compenents in parallel
     __m128i res = _mm_add_epi16(r1, r2);
     int16_t real = _mm_cvtsi128_si32(res); // extract first e
-    int16_t image = _mm_extract_epi16(res, 1);
-    Complex ret = {real, image};
+    int16_t imag = _mm_extract_epi16(res, 1);
+    Complex ret = {real, imag};
     return ret;
-    // Old code for hsum of non complex int16
-    // __m128i zeros = _mm_setzero_si128();
-    // __m128i four = _mm_hadd_epi16(v, zeros);
-    // __m128i two = _mm_hadd_epi16(four, zeros);
-    // __m128i one = _mm_hadd_epi16(two, zeros);
-    // return _mm_cvtsi128_si32(one); //_mm_mask_cvtepi16_epi32 if it is signed?
 }
 
 // Sums the low half with the high half of v to reduce into __m128i
@@ -74,7 +68,6 @@ Complex hsum8x32(__m256i v) {
     __m128i sum128 = _mm_add_epi16( 
         _mm256_castsi256_si128(v), // low half
         _mm256_extracti128_si256(v, 1)); // high half
-    print_m128i(sum128);
     return hsum4x32(sum128);
 }
 
@@ -83,11 +76,11 @@ Complex hsum8x32(__m256i v) {
 Complex hsum16x32(__m512i v) {
     __m256i sum256 = _mm256_add_epi16( 
         _mm512_castsi512_si256(v),  // low half
-        _mm512_extracti64x4_epi64(v, 1)); // high half (supposed to be for 64 bit ints but still work fine for copying purpose)
+        _mm512_extracti64x4_epi64(v, 1)); // high half (function for 64 bit ints but still work fine for copying purpose)
     return hsum8x32(sum256);
 }
 
-// returns vec1 * vec2, where each vector contains 8 Complex numbers (int16 real + int16 image = 32 bits each)
+// returns vec1 * vec2, where each vector contains 8 Complex numbers (int16 real + int16 imag = 32 bits each)
 // Adapted Matt Scarpino's approach but for int16 instead of float
 // https://www.codeproject.com/Articles/874396/Crunching-Numbers-with-AVX-and-AVX
 __m256i _mm256_myComplexMult_epi16(__m256i vec1, __m256i vec2) {
@@ -109,7 +102,7 @@ __m256i _mm256_myComplexMult_epi16(__m256i vec1, __m256i vec2) {
     return vec1;
 }
 
-// a dot b, where a and b are vectors with 16 elements, each a 32 bit complex number {int16 real, int16 image}
+// a dot b, where a and b are vectors with 16 elements, each a 32 bit complex number {int16 real, int16 imag}
 Complex dotProduct16x32(__m512i a, __m512i b) {
     // Split a and b into front and back halves
     __m256i aFront = _mm512_castsi512_si256(a);
@@ -120,7 +113,4 @@ Complex dotProduct16x32(__m512i a, __m512i b) {
     __m256i frontMul = _mm256_myComplexMult_epi16(aFront, bFront);
     __m256i backMul = _mm256_myComplexMult_epi16(aBack, bBack);
     return (hsum8x32(frontMul) + hsum8x32(backMul));
-    // Old code for dot product of non complex int16
-    // __m512i mul = _mm512_mullo_epi16(a, b); // multiplies ints in each of the two vectors and saves the low bits in dp
-    // return hsum32x16(mul); // sums the vector up to get dot product
 }
