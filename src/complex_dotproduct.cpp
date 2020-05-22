@@ -1,17 +1,8 @@
+#include "complex_dotproduct.hpp"
 #include "immintrin.h"
 #include <iostream>
 #include <iomanip>
 #include <stdio.h>
-
-struct Complex {
-    int16_t real;
-    int16_t image;
-    Complex& operator+(const Complex& rhs){ 
-            real += rhs.real;
-            image += rhs.image;
-            return *this;
-    }
-};
 
 // Functions to print Intel vector types to help with debugging 
 
@@ -49,18 +40,25 @@ void print_m128i(__m128i v) {
 }
 
 // dotProduct32x16() helper functions below
-// Adapted Peter Cordes' 2/20/2020 horizontal sum but for int16 instead of int32
+// Adapted Peter Cordes' 2/20/2020 horizontal sum but for Complex int16 instead of int32
 // https://stackoverflow.com/questions/60108658/fastest-method-to-calculate-sum-of-all-packed-32-bit-integers-using-avx512-or-av
 
 // Sums the 4 Complex numbers packed into v
 Complex hsum4x32(__m128i v) {
-    //    (c1    c2 c3 c4) v 
-    // +  (c3    c4  0  0) _mm_permutexvar_epi16(_mm_setr_epi16(2,3,0,0,0,0,0,0), v)
+    //    (c1  c2  c3 c4) v 
+    // +  (c3  c4   0  0) _mm_permutexvar_epi16(_mm_setr_epi16(4,5,6,7,0,0,0,0)
     //  ------------------
-    //  (real image c3 c4) last two values here are ignored
-    __m128i sum128 = _mm_add_epi16(v, _mm_permutexvar_epi16(_mm_setr_epi16(2,3,0,0,0,0,0,0), v));
-    int16_t real = _mm_extract_epi32(sum128, 0);
-    int16_t image = _mm_extract_epi32(sum128, 1);
+    //    (c5  c6  c3 c4) c5 and c6 are the resulting complex numbers (last two values here are ignored)
+    __m128i r1 = _mm_add_epi16(v, _mm_permutexvar_epi16(_mm_setr_epi16(4,5,6,7,0,0,0,0), v));
+    // now, do c5 + c6 = res
+    // c5 and c6 are complex so we can parallelize the two additions
+    // c5 is the first two elements of __m128i r1
+    // the below statement moves c6 to be the first two elements of __m128i r2
+    __m128i r2 = _mm_setr_epi16(_mm_extract_epi16(r1, 2),_mm_extract_epi16(r1, 3),0,0,0,0,0,0);
+    // Now we can add the real and imaginary compenents in parallel
+    __m128i res = _mm_add_epi16(r1, r2);
+    int16_t real = _mm_cvtsi128_si32(res); // extract first e
+    int16_t image = _mm_extract_epi16(res, 1);
     Complex ret = {real, image};
     return ret;
     // Old code for hsum of non complex int16
@@ -76,6 +74,7 @@ Complex hsum8x32(__m256i v) {
     __m128i sum128 = _mm_add_epi16( 
         _mm256_castsi256_si128(v), // low half
         _mm256_extracti128_si256(v, 1)); // high half
+    print_m128i(sum128);
     return hsum4x32(sum128);
 }
 

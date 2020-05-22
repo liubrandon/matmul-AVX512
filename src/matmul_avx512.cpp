@@ -5,16 +5,16 @@
 #include <cassert>
 #include <armadillo>
 #include <cstdlib>
-#include "intrinsics_dotproduct.hpp"
+#include "complex_dotproduct.hpp"
 #include "timer.hpp"
 
-// Matrix multiplication C = AB
+// Complex matrix multiplication C = AB
 // where A has dimensions r1 x c1, B has dimensions c1 x 1 (B is a vector)
-void matmulAVX512(const int16_t* A, int r1, int c1, const int16_t* B, int c2, int16_t* C) {
+void matmulAVX512(const Complex* A, int r1, int c1, const Complex* B, int c2, Complex* C) {
     // __m512i* a_row = (__m512i*)A; // Should I use _mm512_loadu_epi16?
     // __m512i* b_col = (__m512i*)B;
-    for (int i = 0; i < r1 * c1; i += 32) { // treat i as the index of the int16_t value inside A where A is row major
-        int16_t dp = dotProduct32x16(*(__m512i *)(A + i), *(__m512i *)(B));
+    for (int i = 0; i < r1 * c1; i += 32) { // treat i as the index of the Complex value inside A where A is row major
+        Complex dp = dotProduct16x32(*(__m512i *)(A + i), *(__m512i *)(B));
         *C = dp;
         C += 1;
         // Should I use _mm512_mask_compress_epi16 to load into a __m512i buffer then
@@ -25,25 +25,22 @@ void matmulAVX512(const int16_t* A, int r1, int c1, const int16_t* B, int c2, in
 }
 
 // Prints matrix in row major order
-void printMatrix(const int16_t* mat, int rows, int cols) {
-    for (int i = 0; i < rows; i++)
-    {
-        for (int j = 0; j < cols; j++)
-        {
-            std::cout << std::setw(5) << mat[i * cols + j];
+void printMatrix(const Complex* mat, int rows, int cols) {
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            printf("(%4d, %4d) ", mat[i * cols + j].real, mat[i * cols + j].image);
         }
-        std::cout << std::endl;
+        printf("\n");
     }
 }
 
-// Checks if arma::Mat<float> and int16_t* matrices are equal
-bool matricesEqual(const int16_t* C, arma::Mat<float>& armaC) {
-    arma::Mat<float>::iterator it = armaC.begin();
-    arma::Mat<float>::iterator itEnd = armaC.end();
-    for (int i = 0; it != itEnd; it++, i++)
-    {
-        if ((*it) != C[i])
-            return false;
+// Checks if arma::cx_fmat and Complex* matrices are equal
+bool matricesEqual(const Complex* C, arma::cx_fmat& armaC) {
+    arma::cx_fmat::iterator it = armaC.begin();
+    arma::cx_fmat::iterator itEnd = armaC.end();
+    for (int i = 0; it != itEnd; it++, i++) {
+        // if ((*it) != C[i])
+        //     return false;
     }
     return true;
 }
@@ -51,17 +48,17 @@ bool matricesEqual(const int16_t* C, arma::Mat<float>& armaC) {
 // Initializes matrix incrementally from 0 to size (% mod)
 // where size = # rows * # columns
 // if mod is 0 then fill with zeros
-void generateMatrix(int16_t* mat, int size, int mod = 30) {
-    for (int i = 0; i < size; i++)
-    {
-        //Complex num = {(i%mod), (i+1)%mod};
-        mat[i] = mod ? i % mod : 0;
+void generateMatrix(Complex* mat, int size, int mod = 30) {
+    Complex zero = {0,0};
+    for (int i = 0; i < size; i++) {
+        Complex num = {i%mod, i%mod};
+        mat[i] = mod ? num : zero;
     }
 }
 
 // Runs matmulAVX512() numIter times and and returns execution time in μs
-int16_t runAVXBenchmark(int16_t* A, int r1, int c1, int16_t* B, int16_t* C, int numIter) {
-    int16_t start = getTime();
+double runAVXBenchmark(Complex* A, int r1, int c1, Complex* B, Complex* C, int numIter) {
+    double start = getTime();
     for (int i = 0; i < numIter; i++) {
         matmulAVX512(A, r1, c1, B, 1, C);
     }
@@ -70,8 +67,8 @@ int16_t runAVXBenchmark(int16_t* A, int r1, int c1, int16_t* B, int16_t* C, int 
 
 // Runs Armadillo matrix multiply numIter times and returns execution time in μs
 // Pass in Armadillo matrices by reference to avoid copying them
-int16_t runArmaBenchmark(arma::Mat<float>& armaA, arma::Mat<float>& armaB, arma::Mat<float>& armaC, int numIter) {
-    int16_t start = getTime();
+double runArmaBenchmark(arma::cx_fmat& armaA, arma::cx_fmat& armaB, arma::cx_fmat& armaC, int numIter) {
+    double start = getTime();
     for (int i = 0; i < numIter; i++) {
         armaC = armaA * armaB;
     }
@@ -80,10 +77,10 @@ int16_t runArmaBenchmark(arma::Mat<float>& armaA, arma::Mat<float>& armaB, arma:
 
 // Copies int16_t integers stored in source and converts them to floating point
 // and stores them in dest; rows x cols is the size of both matrices
-void int16MatrixToArmaFloat(int16_t* source, arma::Mat<float>& dest, int rows, int cols) {
+void int16MatrixToArmaFloat(Complex* source, arma::cx_fmat& dest, int rows, int cols) {
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
-            dest(i, j) = (float)source[i * cols + j];
+            //dest(i, j) = (float)source[i * cols + j];
         }
     }
 }
@@ -94,17 +91,17 @@ void int16MatrixToArmaFloat(int16_t* source, arma::Mat<float>& dest, int rows, i
 #define DEFAULT_ITER 1000000
 // Initialize test matrices and run benchmarks using my code vs Armadillo's library
 void runBenchmarks(int numIter = DEFAULT_ITER) {
-    int16_t A[NROWS * NCOLS] __attribute__((aligned(64))); // What to align it to?
-    int16_t B[NCOLS] __attribute__((aligned(64)));         // B is a 32 x 1 matrix (vector)
-    int16_t C[NCOLS] __attribute__((aligned(64)));         // C is the 32 x 1 resulting matrix
+    Complex A[NROWS * NCOLS] __attribute__((aligned(64))); // What to align it to?
+    Complex B[NCOLS] __attribute__((aligned(64)));         // B is a 32 x 1 matrix (vector)
+    Complex C[NCOLS] __attribute__((aligned(64)));         // C is the 32 x 1 resulting matrix
     // Initialize matrices for AVX
     generateMatrix(A, NROWS * NCOLS, 40);
     generateMatrix(B, NCOLS, 40);
     generateMatrix(C, NCOLS, 0); // initialize C to all 0s
     // Initialize matrices for Armadillo
-    arma::Mat<float> armaA(NROWS, NCOLS);
-    arma::Mat<float> armaB(NCOLS, 1);
-    arma::Mat<float> armaC(NROWS, 1);
+    arma::cx_fmat armaA(NROWS, NCOLS);
+    arma::cx_fmat armaB(NCOLS, 1);
+    arma::cx_fmat armaC(NROWS, 1);
     int16MatrixToArmaFloat(A, armaA, NROWS, NCOLS);
     int16MatrixToArmaFloat(B, armaB, NCOLS, 1);
     int16MatrixToArmaFloat(C, armaC, NROWS, 1);
@@ -136,6 +133,8 @@ int main() {
     __m256i vec2 = _mm256_setr_epi16(9, 3, 6,  7, 5, 6, 7, 8, 9,  10, 11, 12, 13, 14, 15, 16);
     __m256i res = _mm256_myComplexMult_epi16(vec1, vec2);
     print_m256i(res);
+    Complex sum = hsum8x32(res);
+    printf("real: %d, image: %d\n", sum.real, sum.image);
 
     return 0;
 }

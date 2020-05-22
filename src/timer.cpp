@@ -1,3 +1,4 @@
+#include "timer.hpp"
 #include <time.h>
 
 // Returns current monotonic time in seconds
