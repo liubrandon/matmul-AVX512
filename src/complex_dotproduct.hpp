@@ -4,8 +4,8 @@
 #include "immintrin.h"
 
 struct Complex {
-    int16_t real;
-    int16_t imag;
+    float real;
+    float imag;
     Complex& operator+(const Complex& rhs){ 
             real += rhs.real;
             imag += rhs.imag;
