@@ -15,6 +15,103 @@
 #include "vectorclass.h"
 #include "complexvec1.h"
 
+// function to print complex number vector:
+template <typename C>
+void printcx(const char * text, C a) {
+    auto aa = a.to_vector(); // get elements as real vector
+    printf("%s", text);    // print text
+    for (int n = 0; n < a.size(); n++) { // loop through elements
+        printf("(%.3G,%.3G)  ", aa[2*n], aa[2*n+1]);
+    }
+}
+
+void matmulVCL64x64(const Complex* A, const Complex* B, Complex* C) {
+    // First get 8 8 complex slices of B
+    int i =0;
+    Complex8f Bslice1;
+    Bslice1.load((float*)(B+i+(0*8)));
+    Complex8f Bslice2;
+    Bslice2.load((float*)(B+i+(1*8)));
+    Complex8f Bslice3;
+    Bslice3.load((float*)(B+i+(2*8)));
+    Complex8f Bslice4;
+    Bslice4.load((float*)(B+i+(3*8)));
+    Complex8f Bslice5;
+    Bslice5.load((float*)(B+i+(4*8)));
+    Complex8f Bslice6;
+    Bslice6.load((float*)(B+i+(5*8)));
+    // Complex8f Bslice7;
+    // Bslice7.load((float*)(B+i+(6*8)));
+    // Complex8f Bslice8;
+    // Bslice8.load((float*)(A+i+(7*8)));
+
+    // printcx("Bslice1: ", Bslice1);
+    // std::cout << std::endl;
+    // printcx("Bslice2: ", Bslice2);
+    // std::cout << std::endl;
+    // printcx("Bslice3: ", Bslice3);
+    // std::cout << std::endl;
+    // printcx("Bslice4: ", Bslice4);
+    // std::cout << std::endl;
+    // printcx("Bslice5: ", Bslice5);
+    // std::cout << std::endl;
+    // printcx("Bslice6: ", Bslice6);
+    // std::cout << std::endl;
+    // printcx("Bslice7: ", Bslice7);
+    // std::cout << std::endl;
+    // printcx("Bslice8: ", Bslice8);
+    // std::cout << std::endl;
+    for(int i = 0; i < 48*48; i += 48) {
+        // First get 8 8 complex slices of A
+        // First get 8 8 complex slices of A
+        Complex8f Aslice1;
+        Aslice1.load((float*)(A+i+(0*8)));
+        Complex8f Aslice2;
+        Aslice2.load((float*)(A+i+(1*8)));
+        Complex8f Aslice3;
+        Aslice3.load((float*)(A+i+(2*8)));
+        Complex8f Aslice4;
+        Aslice4.load((float*)(A+i+(3*8)));
+        Complex8f Aslice5;
+        Aslice5.load((float*)(A+i+(4*8)));
+        Complex8f Aslice6;
+        Aslice6.load((float*)(A+i+(5*8)));
+        // Complex8f Aslice7;
+        // Aslice7.load((float*)(A+i+(6*8)));
+        // Complex8f Aslice8;
+        // Aslice8.load((float*)(A+i+(7*8)));
+
+        // printcx("Aslice1: ", Aslice1);
+        // std::cout << std::endl;
+        // printcx("Aslice2: ", Aslice2);
+        // std::cout << std::endl;
+        // printcx("Aslice3: ", Aslice3);
+        // std::cout << std::endl;
+        // printcx("Aslice4: ", Aslice4);
+        // std::cout << std::endl;
+        // printcx("Aslice5: ", Aslice5);
+        // std::cout << std::endl;
+        // printcx("Aslice6: ", Aslice6);
+        // std::cout << std::endl;
+        // printcx("Aslice7: ", Aslice7);
+        // std::cout << std::endl;
+        // printcx("Aslice8: ", Aslice8);
+        // std::cout << std::endl;
+        Complex1f hsum1 = chorizontal_add(Aslice1 * Bslice1);// 300.0x
+        Complex1f hsum2 = chorizontal_add(Aslice2 * Bslice2);//  1.5x
+        Complex1f hsum3 = chorizontal_add(Aslice3 * Bslice3);//  1.5x
+        Complex1f hsum4 = chorizontal_add(Aslice4 * Bslice4);//  0.7x
+        Complex1f hsum5 = chorizontal_add(Aslice5 * Bslice5);//  1.1x
+        Complex1f hsum6 = chorizontal_add(Aslice6 * Bslice6); // 0.6x
+        // Complex1f hsum7 = chorizontal_add(Aslice7 * Bslice7);
+        // Complex1f hsum8 = chorizontal_add(Aslice8 * Bslice8);
+        Complex1f dp = hsum1 + hsum2 + hsum3 + hsum4 + hsum5 + hsum6;// + hsum7 + hsum8;
+        Complex res = {dp.real(), dp.imag()};
+        *C = res;
+        C += 1;
+    }
+} 
+
 void matmulVCL(const Complex* A, int r1, int c1, const Complex* B, int c2, Complex* C) {
     Complex8f res;
     for(int i = 0; i < r1*c1; i += 8) {
@@ -49,6 +146,7 @@ void printMatrix(const Complex* mat, int rows, int cols) {
         }
         printf("\n");
     }
+    arma::cx_float a;
 }
 
 // Checks if arma::cx_fmat and Complex* matrices are equal
@@ -113,7 +211,8 @@ double runArmaBenchmark(arma::cx_fmat&  armaA, arma::cx_fmat&  armaB, arma::cx_f
 double runVCLBenchmark(Complex* A, int r1, int c1, Complex* B, Complex* C, int numIter) {
     double start = getTime();
     for (int i = 0; i < numIter; i++) {
-        matmulVCL(A, r1, c1, B, 1, C);
+        //matmulVCL(A, r1, c1, B, 1, C);
+        matmulVCL64x64(A, B, C);
     }
     return timeSince(start);
 }
@@ -155,19 +254,9 @@ arma::cx_fmat vclMatrixToArma(const Complex1f* source, int rows, int cols) {
     return armaCopy;
 }
 
-// function to print complex number vector:
-template <typename C>
-void printcx(const char * text, C a) {
-    auto aa = a.to_vector(); // get elements as real vector
-    printf("%s", text);    // print text
-    for (int n = 0; n < a.size(); n++) { // loop through elements
-        printf("(%.3G,%.3G)  ", aa[2*n], aa[2*n+1]);
-    }
-}
-
 // Supresses ISO C++ warning about variable length array
-#define NROWS 8
-#define NCOLS 8
+#define NROWS 48
+#define NCOLS 48
 #define DEFAULT_ITER 1000000
 // Initialize test matrices and run benchmarks using my code vs Armadillo's library
 void runBenchmarks(int numIter = DEFAULT_ITER) {
@@ -180,9 +269,10 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
     generateMatrix(A, NROWS * NCOLS, 10);
     generateMatrix(B, NCOLS, 10);
     generateMatrix(C, NCOLS, 0); // initialize C to all 0s
-    printMatrix(A, NROWS, NCOLS);
-    printMatrix(B, NROWS, 1);
-    printMatrix(C, NROWS, 1);
+    
+    // printMatrix(A, NROWS, NCOLS);
+    // printMatrix(B, NROWS, 1);
+    // printMatrix(C, NROWS, 1);
 
     // Complex8f firstrow;
     // firstrow.load((float*)A);
@@ -293,8 +383,26 @@ void runDotBenchmarks(int numIter) {
     printf("%2.2fx MKL/Armadillo float dot\n", avgArma / avgVCL);
 }
 
-int main(int argc, char **argv) {
-    // runDotBenchmarks(DEFAULT_ITER);
+int main(int argc, char **argv) { 
+    // Complex arr1[4] = {{1,2},{3,4},{5,6},{7,8}};
+    // Complex arr2[4] = {{9,10},{11,12},{13,14},{15,16}};
+    // __m512 res1 = _mm512_myComplexMult_ps(*(__m512*)arr1, *(__m512*)arr2);
+    // print_m512(res1);
+    Complex_int16 arr3[16] = {{1,2},{2,3},{3,4},{4,5},{5,6},{6,7},{7,8},{8,9},{9,10},{10,11},{11,12},{12,13},{13,14},{14,15},{15,16},{16,17}}; 
+    Complex_int16 arr4[16] = {{11,21},{21,31},{31,41},{41,51},{51,61},{61,71},{71,81},{81,91},{91,101},{101,111},{111,121},{121,131},{131,141},{141,151},{151,161},{161,171}}; 
+    __m512i test1 = *(__m512i*)arr3;
+    __m512i test2 = *(__m512i*)arr4;
+    __m512i res = _mm512_myComplexMult_epi16(test1, test2);
+    print_m512i(test2);
+    print_m512i(res);
+
+    return 0;
+    // Testing horizonal sum
+    // Complex_int16 arr[16] = {{1,1},{2,2},{3,3},{4,4},{5,5},{6,6},{7,7},{8,8},{9,9},{10,10},{11,11},{12,12},{13,13},{14,14},{15,15},{16,16}}; 
+    // __m512i test = *(__m512i*)arr;
+    // print_m512i(test);
+    // Complex_int16 res = _mm512_reduce_add_epi16(test);
+    // std::cout << res.real << "," << res.imag << std::endl;
     // return 0;
     if (argc == 1) {
         runBenchmarks();

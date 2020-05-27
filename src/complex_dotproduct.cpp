@@ -11,8 +11,8 @@
 void print_m512i(__m512i v) {
     int16_t* val = (int16_t*)&v;
     std::cout << "__m512i: ";
-    for(int i = 0; i < 32; i++) {
-        std::cout << std::setw(4) << val[i];
+    for(int i = 0; i < 32; i+=2) {
+        std::cout << "(" << std::setw(2) << val[i] << "," << std::setw(2) << val[i+1] << "), ";
     }
     std::cout << std::endl;
 }
@@ -22,8 +22,8 @@ void print_m512i(__m512i v) {
 void print_m256i(__m256i v) {
     int16_t* val = (int16_t*)&v;
     std::cout << "__m256i: ";
-    for(int i = 0; i < 16; i++) {
-        std::cout << std::setw(5) << val[i];
+    for(int i = 0; i < 16; i+=2) {
+        std::cout << "(" << std::setw(2) << val[i] << "," << std::setw(2) << val[i+1] << "), ";
     }
     std::cout << std::endl;
 }
@@ -33,8 +33,8 @@ void print_m256i(__m256i v) {
 void print_m128i(__m128i v) {
     int16_t* val = (int16_t*)&v;
     std::cout << "__m128i: ";
-    for(int i = 0; i < 8; i++) {
-        std::cout << std::setw(7) << val[i];
+    for(int i = 0; i < 8; i+=2) {
+        std::cout << "(" << std::setw(2) << val[i] << "," << std::setw(2) << val[i+1] << "), ";
     }
     std::cout << std::endl;
 }
@@ -102,6 +102,30 @@ __m256i _mm256_myComplexMult_epi16(__m256i vec1, __m256i vec2) {
     return vec1;
 }
 
+void print_m512(__m512 v) {
+    float* val = (float*)&v;
+    std::cout << "__m512: ";
+    for(int i = 0; i < 8; i+=2) {
+        std::cout << "(" << std::setw(2) << val[i] << "," << std::setw(2) << val[i+1] << "), ";
+    }
+    std::cout << std::endl;
+}
+
+__m512 _mm512_myComplexMult_ps(__m512 a, __m512 b) {
+    __m512 b_flip = _mm512_shuffle_ps(b,b,0xB1);   // Swap b.re and b.im
+    print_m512(b_flip);
+    __m512 a_im   = _mm512_shuffle_ps(a,a,0xF5);   // Imag part of a in both
+    __m512 a_re   = _mm512_shuffle_ps(a,a,0xA0);   // Real part of a in both
+    __m512 aib    = _mm512_mul_ps(a_im, b_flip);   // (a.im*b.im, a.im*b.re)
+    return _mm512_fmaddsub_ps(a_re, b, aib);   // a_re * b +/- aib
+}
+
+__m512i _mm512_myComplexMult_epi16(__m512i a, __m512i b) {
+    int16_t temp[32] = {1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14, 17, 16, 19, 18, 21, 20, 23, 22, 25, 24, 27, 26, 29, 28, 31, 30};
+    __m512i idx = *(__m512i*)temp;
+    __m512i b_flip = _mm512_permutexvar_epi16(idx, b);
+    return b_flip;
+}
 // a dot b, where a and b are vectors with 16 elements, each a 32 bit complex number {int16 real, int16 imag}
 Complex dotProduct16x32(__m512i a, __m512i b) {
     // Split a and b into front and back halves

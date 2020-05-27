@@ -11,7 +11,7 @@ ASM      := $(SRC:$(SRC_DIR)/%.cpp=$(ASM_DIR)/%.s)
 # Compiler, preprocessor, compiler flags, linker flags, and library flags
 CXX		 := g++
 CPPFLAGS :=														
-CFLAGS 	 := -I/home/brandon/matmul/lib/vcl-add-on/complex -I/home/brandon/matmul/lib/vcl-2.01.02 -std=c++17 -g -Wall -Wextra -pedantic -march=native -O3 #-mavx512f -mavx2 
+CFLAGS 	 := -I/home/brandon/matmul/lib/vcl-add-on/complex -I/home/brandon/matmul/lib/vcl-2.01.02 -std=c++17 -g -Wall -Wextra -pedantic -march=native -O3 -mavx512f -mavx2 
 LDFLAGS  := -Wl,--no-as-needed
 LDLIBS	 := -larmadillo -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
 
