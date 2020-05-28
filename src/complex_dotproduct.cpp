@@ -44,7 +44,7 @@ void print_m128i(__m128i v) {
 // https://stackoverflow.com/questions/60108658/fastest-method-to-calculate-sum-of-all-packed-32-bit-integers-using-avx512-or-av
 
 // Sums the 4 Complex numbers packed into v
-Complex hsum4x32(__m128i v) {
+Complex_int16 hsum4x32(__m128i v) {
     //    (c1  c2  c3 c4) is v 
     // +  (c3  c4   0  0) is _mm_permutexvar_epi16(_mm_setr_epi16(4,5,6,7,0,0,0,0))
     //  ------------------
@@ -59,12 +59,12 @@ Complex hsum4x32(__m128i v) {
     __m128i res = _mm_add_epi16(r1, r2);
     int16_t real = _mm_cvtsi128_si32(res); // extract first e
     int16_t imag = _mm_extract_epi16(res, 1);
-    Complex ret = {real, imag};
+    Complex_int16 ret = {real, imag};
     return ret;
 }
 
 // Sums the low half with the high half of v to reduce into __m128i
-Complex hsum8x32(__m256i v) {
+Complex_int16 hsum8x32(__m256i v) {
     __m128i sum128 = _mm_add_epi16( 
         _mm256_castsi256_si128(v), // low half
         _mm256_extracti128_si256(v, 1)); // high half
@@ -73,7 +73,7 @@ Complex hsum8x32(__m256i v) {
 
 // Sums the low half with the high half of v to reduce into __m256i
 // Unused for now
-Complex hsum16x32(__m512i v) {
+Complex_int16 hsum16x32(__m512i v) {
     __m256i sum256 = _mm256_add_epi16( 
         _mm512_castsi512_si256(v),  // low half
         _mm512_extracti64x4_epi64(v, 1)); // high half (function for 64 bit ints but still work fine for copying purpose)
@@ -113,21 +113,42 @@ void print_m512(__m512 v) {
 
 __m512 _mm512_myComplexMult_ps(__m512 a, __m512 b) {
     __m512 b_flip = _mm512_shuffle_ps(b,b,0xB1);   // Swap b.re and b.im
-    print_m512(b_flip);
     __m512 a_im   = _mm512_shuffle_ps(a,a,0xF5);   // Imag part of a in both
     __m512 a_re   = _mm512_shuffle_ps(a,a,0xA0);   // Real part of a in both
     __m512 aib    = _mm512_mul_ps(a_im, b_flip);   // (a.im*b.im, a.im*b.re)
+    print_m512(a_re);
+    print_m512(b);
+    print_m512(aib);
     return _mm512_fmaddsub_ps(a_re, b, aib);   // a_re * b +/- aib
 }
 
 __m512i _mm512_myComplexMult_epi16(__m512i a, __m512i b) {
-    int16_t temp[32] = {1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14, 17, 16, 19, 18, 21, 20, 23, 22, 25, 24, 27, 26, 29, 28, 31, 30};
-    __m512i idx = *(__m512i*)temp;
-    __m512i b_flip = _mm512_permutexvar_epi16(idx, b);
-    return b_flip;
+    // Not sure why _mm512_set_epi16 throws an error but the below array to vector conversion should be equivalent
+    // idx0 corresponds to indices to swap real and imag, idx1 sets both component to imag, idx2 sets both components to real
+    const int16_t temp0[32] = {1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14, 17, 16, 19, 18, 21, 20, 23, 22, 25, 24, 27, 26, 29, 28, 31, 30};
+    const int16_t temp1[32] = {1, 1, 3, 3, 5, 5, 7, 7, 9, 9, 11, 11, 13, 13, 15, 15, 17, 17, 19, 19, 21, 21, 23, 23, 25, 25, 27, 27, 29, 29, 31, 31};
+    const int16_t temp2[32] = {0, 0, 2, 2, 4, 4, 6, 6, 8, 8, 10, 10, 12, 12, 14, 14, 16, 16, 18, 18, 20, 20, 22, 22, 24, 24, 26, 26, 28, 28, 30, 30};
+    const int16_t temp3[32] = {-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1};
+    const __m512i idx0 = *(__m512i*)temp0;
+    const __m512i idx1 = *(__m512i*)temp1;
+    const __m512i idx2 = *(__m512i*)temp2;
+    const __m512i addsub = *(__m512i*)temp3;
+    __m512i b_flip = _mm512_permutexvar_epi16(idx0, b); // Swap b.re and b.im
+    __m512i a_im = _mm512_permutexvar_epi16(idx1, a); // Imag part of a in both
+    __m512i a_re = _mm512_permutexvar_epi16(idx2, a); // Real part of a in both
+    __m512i aib = _mm512_mullo_epi16(a_im, b_flip);   // (a.im*b.im, a.im*b.re)
+    __m512i areb = _mm512_mullo_epi16(a_re, b);   // a_re * b
+    __m512i aib_addsub = _mm512_mullo_epi16(aib, addsub); // flips sign of even index values
+    return _mm512_add_epi16(areb, aib_addsub);   // areb +/- aib
 }
+
+Complex_int16 dotProduct16x32(__m512i a, __m512i b) {
+    return _mm512_reduce_add_epi16(_mm512_myComplexMult_epi16(a, b));
+}
+
+
 // a dot b, where a and b are vectors with 16 elements, each a 32 bit complex number {int16 real, int16 imag}
-Complex dotProduct16x32(__m512i a, __m512i b) {
+Complex_int16 old_dotProduct16x32(__m512i a, __m512i b) {
     // Split a and b into front and back halves
     __m256i aFront = _mm512_castsi512_si256(a);
     __m256i aBack = _mm512_extracti64x4_epi64(a, 1);
@@ -138,3 +159,6 @@ Complex dotProduct16x32(__m512i a, __m512i b) {
     __m256i backMul = _mm256_myComplexMult_epi16(aBack, bBack);
     return (hsum8x32(frontMul) + hsum8x32(backMul));
 }
+
+
+

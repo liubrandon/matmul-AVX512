@@ -3,10 +3,20 @@
 
 #include "immintrin.h"
 
-struct Complex {
+struct Complex_float {
     float real;
     float imag;
-    Complex& operator+(const Complex& rhs){ 
+    Complex_float& operator+(const Complex_float& rhs){ 
+            real += rhs.real;
+            imag += rhs.imag;
+            return *this;
+    }
+};
+
+struct Complex_int16 {
+    int16_t real;
+    int16_t imag;
+    Complex_int16& operator+(const Complex_int16& rhs){ 
             real += rhs.real;
             imag += rhs.imag;
             return *this;
@@ -32,14 +42,14 @@ void print_m128i(__m128i v);
 // https://stackoverflow.com/questions/60108658/fastest-method-to-calculate-sum-of-all-packed-32-bit-integers-using-avx512-or-av
 
 // Sums the 4 Complex numbers packed into v
-Complex hsum4x32(__m128i v);
+Complex_int16 hsum4x32(__m128i v);
 
 // Sums the low half with the high half of v to reduce into __m128i
-Complex hsum8x32(__m256i v);
+Complex_int16 hsum8x32(__m256i v);
 
 // Sums the low half with the high half of v to reduce into __m256i
 // Unused for now
-Complex hsum16x32(__m512i v);
+Complex_int16 hsum16x32(__m512i v);
 
 // returns vec1 * vec2, where each vector contains 8 Complex numbers (int16 real + int16 imag = 32 bits each)
 // Adapted Matt Scarpino's approach but for int16 instead of float
@@ -47,12 +57,7 @@ Complex hsum16x32(__m512i v);
 __m256i _mm256_myComplexMult_epi16(__m256i vec1, __m256i vec2);
 
 // a dot b, where a and b are vectors with 16 elements, each a 32 bit complex number {int16 real, int16 imag}
-Complex dotProduct16x32(__m512i a, __m512i b);
-
-struct Complex_int16 {
-    int16_t real;
-    int16_t imag;
-};
+Complex_int16 dotProduct16x32(__m512i a, __m512i b);
 
 // Definition of __v16hi in avxintrin.h
 // typedef short __v16hi __attribute__ ((__vector_size__ (32)));

@@ -13,7 +13,7 @@ CXX		 := g++
 CPPFLAGS :=														
 CFLAGS 	 := -I/home/brandon/matmul/lib/vcl-add-on/complex -I/home/brandon/matmul/lib/vcl-2.01.02 -std=c++17 -g -Wall -Wextra -pedantic -march=native -O3 -mavx512f -mavx2 
 LDFLAGS  := -Wl,--no-as-needed
-LDLIBS	 := -larmadillo -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
+LDLIBS	 := -larmadillo -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl 
 
 .PHONY: assembly all clean
 
@@ -21,10 +21,10 @@ LDLIBS	 := -larmadillo -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -l
 all: $(TARGET)
 
 $(TARGET): $(OBJ)
-	$(CXX) $(ASMFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@
+	$(CXX) -DMKL_ILP64 -m64 $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
-	$(CXX) $(ASMFLAGS) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+	$(CXX) -DMKL_ILP64 -m64 $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 $(OBJ_DIR):
 	mkdir $@
