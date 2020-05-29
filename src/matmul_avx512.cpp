@@ -32,7 +32,15 @@ void printcx(const char * text, C a) {
 static inline void matmulVCL(const Complex_float* A, int r1, int c1, const Complex_float* B, Complex_float* C) {
     static const Complex8f bSlice1 = *(Complex8f*)(B+(0*8));
     static const Complex8f bSlice2 = *(Complex8f*)(B+(1*8));
-    if(c1 == 16) {
+    if(c1 == 8) {
+        for(int i = 0; i < r1*c1; i += 8) {
+            const Complex1f dp = chorizontal_add(*(Complex8f*)(A+i) * bSlice1);
+            const Complex_float res = {dp.real(), dp.imag()};
+            *C = res;
+            C += 1;
+        }
+    }
+    else if(c1 == 16) {
         for(int i = 0; i < r1*c1; i += 16) {
             const Complex1f dp = chorizontal_add(*(Complex8f*)(A+i+(0*8)) * bSlice1)
                                + chorizontal_add(*(Complex8f*)(A+i+(1*8)) * bSlice2);
@@ -76,7 +84,13 @@ static inline void matmulAVX512(const Complex_int16* A, const int r1, const int 
     int cIdx = 0;
     Complex_int16 tempC[64] __attribute__((aligned(64)));
     memset((void*)tempC, 0, (size_t)r1);
-    if(c1 == 16) { // Calculating dot product only needs one __m512i vector
+    if(c1 == 8) {
+        for(int i = 0; i < r1 * c1; i += 8, cIdx++) { // treat i as the index of the Complex value inside A where A is row major
+            const Complex_int16 dp = hsum8x32(_mm256_myComplexMult_epi16(_mm256_loadu_si256((const __m256i_u*)(A + i)), _mm256_loadu_si256((const __m256i_u*)B)));
+            tempC[cIdx] = dp;
+        }
+    }
+    else if(c1 == 16) { // Calculating dot product only needs one __m512i vector
         for(int i = 0; i < r1 * c1; i += 16, cIdx++) { // treat i as the index of the Complex value inside A where A is row major
             const Complex_int16 dp = dotProduct16x32(_mm512_loadu_si512((const void*)(A + i)), bSlice[0]);
             tempC[cIdx] = dp;
@@ -226,8 +240,8 @@ void int16MatrixToFloat(const Complex_int16* source, Complex_float* dest, int si
     }
 }
 // Supresses ISO C++ warning about variable length array
-#define NROWS 16
-#define NCOLS 16
+#define NROWS 8
+#define NCOLS 8
 #define DEFAULT_ITER 1000000
 // Initialize test matrices and run benchmarks using my code vs Armadillo's library
 void runBenchmarks(int numIter = DEFAULT_ITER) {
@@ -260,6 +274,7 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
     double armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
     // printMatrix(C, NROWS, 1);
     // std::cout << armaC << std::endl;
+    // printMatrix(floatC, NROWS, 1);
     // Assert the resulting matrices are the same
     assert(matricesEqual(C, armaC));
     assert(matricesEqual(floatC, armaC));

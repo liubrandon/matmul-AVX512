@@ -116,4 +116,59 @@ static inline Complex_int16 dotProduct16x32(__m512i a, __m512i b) {
 }
 
 void print_m512(__m512 v);
+
+// dotProduct32x16() helper functions below
+// Adapted Peter Cordes' 2/20/2020 horizontal sum but rewrote for Complex int16 numbers
+// https://stackoverflow.com/questions/60108658/fastest-method-to-calculate-sum-of-all-packed-32-bit-integers-using-avx512-or-av
+
+// Sums the 4 Complex numbers packed into v
+static inline Complex_int16 hsum4x32(__m128i v) {
+    //    (c1  c2  c3 c4) is v 
+    // +  (c3  c4   0  0) is _mm_permutexvar_epi16(_mm_setr_epi16(4,5,6,7,0,0,0,0))
+    //  ------------------
+    //    (c5  c6  c3 c4) c5 and c6 are the resulting complex numbers (last two values here are ignored)
+    __m128i r1 = _mm_add_epi16(v, _mm_permutexvar_epi16(_mm_setr_epi16(4,5,6,7,0,0,0,0), v));
+    // now, do c5 + c6 = res
+    // c5 and c6 are complex so we can parallelize the two additions
+    // c5 is the first two elements of __m128i r1
+    // the below statement moves c6 to be the first two elements of __m128i r2
+    __m128i r2 = _mm_setr_epi16(_mm_extract_epi16(r1, 2),_mm_extract_epi16(r1, 3),0,0,0,0,0,0);
+    // Now we can add the real and imaginary compenents in parallel
+    __m128i res = _mm_add_epi16(r1, r2);
+    int16_t real = _mm_cvtsi128_si32(res); // extract first e
+    int16_t imag = _mm_extract_epi16(res, 1);
+    Complex_int16 ret = {real, imag};
+    return ret;
+}
+
+// Sums the low half with the high half of v to reduce into __m128i
+static inline Complex_int16 hsum8x32(__m256i v) {
+    __m128i sum128 = _mm_add_epi16( 
+        _mm256_castsi256_si128(v), // low half
+        _mm256_extracti128_si256(v, 1)); // high half
+    return hsum4x32(sum128);
+}
+
+// returns vec1 * vec2, where each vector contains 8 Complex numbers (int16 real + int16 imag = 32 bits each)
+// Adapted Matt Scarpino's approach but for int16 instead of float
+// https://www.codeproject.com/Articles/874396/Crunching-Numbers-with-AVX-and-AVX
+static inline __m256i _mm256_myComplexMult_epi16(__m256i vec1, __m256i vec2) {
+    /* Step 1: Multiply vec1 and vec2 */
+    __m256i vec3 = _mm256_mullo_epi16(vec1, vec2);
+    /* Step 2: Switch the real and imaginary elements of vec2 */
+    __m256i index2 = _mm256_setr_epi16(1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14); // These numbers correspond to the permuted indexes of vec2
+    vec2 = _mm256_permutexvar_epi16(index2, vec2);
+    /* Step 3: Negate the imaginary elements of vec2 */
+    __m256i neg = _mm256_setr_epi16(1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1);
+    vec2 = _mm256_mullo_epi16(vec2, neg);
+    /* Step 4: Multiply vec1 and the modified vec2 */
+    __m256i vec4 = _mm256_mullo_epi16(vec1, vec2);
+    /* Step 5: Horizontally subtract the elements in vec3 and vec4 */
+    vec1 = _mm256_hsub_epi16(vec3, vec4);
+    /* Step 6: Swap into correct spots */
+    __m256i index6 = _mm256_setr_epi16(0, 4, 1, 5, 2, 6, 3, 7, 8, 12, 9, 13, 10, 14, 11, 15);
+    vec1 = _mm256_permutexvar_epi16(index6, vec1);
+    return vec1;
+}
+
 #endif
