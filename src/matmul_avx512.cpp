@@ -29,135 +29,70 @@ void printcx(const char * text, C a) {
     }
 }
 
-void matmulVCL64x64(const Complex_float* A, const Complex_float* B, Complex_float* C) {
-    // First get 8 8 complex slices of B
-    int i =0;
-    Complex8f Bslice1;
-    Bslice1.load((float*)(B+i+(0*8)));
-    Complex8f Bslice2;
-    Bslice2.load((float*)(B+i+(1*8)));
-    Complex8f Bslice3;
-    Bslice3.load((float*)(B+i+(2*8)));
-    Complex8f Bslice4;
-    Bslice4.load((float*)(B+i+(3*8)));
-    Complex8f Bslice5;
-    Bslice5.load((float*)(B+i+(4*8)));
-    Complex8f Bslice6;
-    Bslice6.load((float*)(B+i+(5*8)));
-    // Complex8f Bslice7;
-    // Bslice7.load((float*)(B+i+(6*8)));
-    // Complex8f Bslice8;
-    // Bslice8.load((float*)(A+i+(7*8)));
-
-    // printcx("Bslice1: ", Bslice1);
-    // std::cout << std::endl;
-    // printcx("Bslice2: ", Bslice2);
-    // std::cout << std::endl;
-    // printcx("Bslice3: ", Bslice3);
-    // std::cout << std::endl;
-    // printcx("Bslice4: ", Bslice4);
-    // std::cout << std::endl;
-    // printcx("Bslice5: ", Bslice5);
-    // std::cout << std::endl;
-    // printcx("Bslice6: ", Bslice6);
-    // std::cout << std::endl;
-    // printcx("Bslice7: ", Bslice7);
-    // std::cout << std::endl;
-    // printcx("Bslice8: ", Bslice8);
-    // std::cout << std::endl;
-    for(int i = 0; i < 48*48; i += 48) {
-        // First get 8 8 complex slices of A
-        // First get 8 8 complex slices of A
-        Complex8f Aslice1;
-        Aslice1.load((float*)(A+i+(0*8)));
-        Complex8f Aslice2;
-        Aslice2.load((float*)(A+i+(1*8)));
-        Complex8f Aslice3;
-        Aslice3.load((float*)(A+i+(2*8)));
-        Complex8f Aslice4;
-        Aslice4.load((float*)(A+i+(3*8)));
-        Complex8f Aslice5;
-        Aslice5.load((float*)(A+i+(4*8)));
-        Complex8f Aslice6;
-        Aslice6.load((float*)(A+i+(5*8)));
-        // Complex8f Aslice7;
-        // Aslice7.load((float*)(A+i+(6*8)));
-        // Complex8f Aslice8;
-        // Aslice8.load((float*)(A+i+(7*8)));
-
-        // printcx("Aslice1: ", Aslice1);
-        // std::cout << std::endl;
-        // printcx("Aslice2: ", Aslice2);
-        // std::cout << std::endl;
-        // printcx("Aslice3: ", Aslice3);
-        // std::cout << std::endl;
-        // printcx("Aslice4: ", Aslice4);
-        // std::cout << std::endl;
-        // printcx("Aslice5: ", Aslice5);
-        // std::cout << std::endl;
-        // printcx("Aslice6: ", Aslice6);
-        // std::cout << std::endl;
-        // printcx("Aslice7: ", Aslice7);
-        // std::cout << std::endl;
-        // printcx("Aslice8: ", Aslice8);
-        // std::cout << std::endl;
-        Complex1f hsum1 = chorizontal_add(Aslice1 * Bslice1);// 300.0x
-        Complex1f hsum2 = chorizontal_add(Aslice2 * Bslice2);//  1.5x
-        Complex1f hsum3 = chorizontal_add(Aslice3 * Bslice3);//  1.5x
-        Complex1f hsum4 = chorizontal_add(Aslice4 * Bslice4);//  0.7x
-        Complex1f hsum5 = chorizontal_add(Aslice5 * Bslice5);//  1.1x
-        Complex1f hsum6 = chorizontal_add(Aslice6 * Bslice6); // 0.6x
-        // Complex1f hsum7 = chorizontal_add(Aslice7 * Bslice7);
-        // Complex1f hsum8 = chorizontal_add(Aslice8 * Bslice8);
-        Complex1f dp = hsum1 + hsum2 + hsum3 + hsum4 + hsum5 + hsum6;// + hsum7 + hsum8;
-        Complex_float res = {dp.real(), dp.imag()};
-        *C = res;
-        C += 1;
-    }
-} 
-
-void matmulVCL(const Complex_float* A, int r1, int c1, const Complex_float* B, Complex_float* C) {
-    assert(dimensionsValid(r1, c1));
+static inline void matmulVCL(const Complex_float* A, int r1, int c1, const Complex_float* B, Complex_float* C) {
+    static const Complex8f bSlice1 = *(Complex8f*)(B+(0*8));
+    static const Complex8f bSlice2 = *(Complex8f*)(B+(1*8));
     if(c1 == 16) {
-        Complex8f Bslice1;
-        Bslice1.load((float*)(B+(0*8)));
-        Complex8f Bslice2;
-        Bslice2.load((float*)(B+(1*8)));
         for(int i = 0; i < r1*c1; i += 16) {
-            Complex8f Aslice1;
-            Aslice1.load((float*)(A+i+(0*8)));
-            Complex8f Aslice2;
-            Aslice2.load((float*)(A+i+(1*8)));
-            Complex1f partialdp1 = chorizontal_add(Aslice1 * Bslice1);
-            Complex1f partialdp2 = chorizontal_add(Aslice2 * Bslice2);
-            Complex1f dp = partialdp1+partialdp2;
-            Complex_float res = {dp.real(), dp.imag()};
+            const Complex1f dp = chorizontal_add(*(Complex8f*)(A+i+(0*8)) * bSlice1)
+                               + chorizontal_add(*(Complex8f*)(A+i+(1*8)) * bSlice2);
+            const Complex_float res = {dp.real(), dp.imag()};
             *C = res;
             C += 1;
         }
     }
-    
+    else if(c1 == 64) {
+        static const Complex8f bSlice3 = *(Complex8f*)(B+(2*8));
+        static const Complex8f bSlice4 = *(Complex8f*)(B+(3*8));
+        static const Complex8f bSlice5 = *(Complex8f*)(B+(4*8));
+        static const Complex8f bSlice6 = *(Complex8f*)(B+(5*8));
+        static const Complex8f bSlice7 = *(Complex8f*)(B+(6*8));
+        static const Complex8f bSlice8 = *(Complex8f*)(B+(7*8));
+        for(int i = 0; i < r1*c1; i += 64) {
+            const Complex1f dp = chorizontal_add(*(Complex8f*)(A+i+(0*8)) * bSlice1)
+                               + chorizontal_add(*(Complex8f*)(A+i+(1*8)) * bSlice2)
+                               + chorizontal_add(*(Complex8f*)(A+i+(2*8)) * bSlice3)
+                               + chorizontal_add(*(Complex8f*)(A+i+(3*8)) * bSlice4)
+                               + chorizontal_add(*(Complex8f*)(A+i+(4*8)) * bSlice5)
+                               + chorizontal_add(*(Complex8f*)(A+i+(5*8)) * bSlice6)
+                               + chorizontal_add(*(Complex8f*)(A+i+(6*8)) * bSlice7)
+                               + chorizontal_add(*(Complex8f*)(A+i+(7*8)) * bSlice8);
+            const Complex_float res = {dp.real(), dp.imag()};
+            *C = res;
+            C += 1;
+        }
+    }
 } 
 
 // Complex matrix multiplication C = AB
 // where A has dimensions r1 x c1, B has dimensions c1 x 1 (B is a vector)
-void matmulAVX512(const Complex_int16* A, int r1, int c1, const Complex_int16* B, Complex_int16* C) {
-    assert(dimensionsValid(r1, c1));
+static inline void matmulAVX512(const Complex_int16* A, int r1, int c1, const Complex_int16* B, Complex_int16* C) {
+    static const __m512i bSlice[4] = {
+        _mm512_loadu_si512((const void*)(0+B)),
+        _mm512_loadu_si512((const void*)(16+B)),
+        _mm512_loadu_si512((const void*)(32+B)),
+        _mm512_loadu_si512((const void*)(48+B)),
+    };
     if(c1 == 16) { // Calculating dot product only needs one __m512i vector
         for (int i = 0; i < r1 * c1; i += 16) { // treat i as the index of the Complex value inside A where A is row major
-            Complex_int16 dp = dotProduct16x32(*(__m512i *)(A + i), *(__m512i *)(B));
+            const Complex_int16 dp = dotProduct16x32(_mm512_loadu_si512((const void*)(A + i)), bSlice[0]);
             *C = dp;
             C += 1;
         }
-    } else if(c1 == 64) { // Calculating dot product needs 4 __m512i
-        for (int i = 0; i < r1 * c1; i += 64) { // TODO: Change to properly block the matrices for cache locality
-            Complex_int16 partialdp1 = dotProduct16x32(*(__m512i *)(A + (0+i)), *(__m512i *)(0+B));
-            Complex_int16 partialdp2 = dotProduct16x32(*(__m512i *)(A + (16+i)), *(__m512i *)(16+B));
-            Complex_int16 partialdp3 = dotProduct16x32(*(__m512i *)(A + (32+i)), *(__m512i *)(32+B));
-            Complex_int16 partialdp4 = dotProduct16x32(*(__m512i *)(A + (48+i)), *(__m512i *)(48+B));
-            Complex_int16 dp = partialdp1+partialdp2+partialdp3+partialdp4;
-            *C = dp;
-            C += 1;
+    } else if (c1 == 64) { // Calculating dot product needs 4 __m512i
+        int resIndex = 0;
+        // for(int r = 0; r < r1; r+=64) {
+        //     for(int c = 0; c < 64; c++) {
+                
+        //     }
+        // }
+        for (int i = 0; i < r1 * c1; i += 64, resIndex += 1) { // TODO: Change to properly block the matrices for cache locality
+            const Complex_int16 dp = dotProduct16x32(_mm512_loadu_si512((const void*)(A + i)), bSlice[0])
+                                   + dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 16)), bSlice[1])
+                                   + dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 32)), bSlice[2])
+                                   + dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 48)), bSlice[3]);
+            C[resIndex] = dp;
+            // sum up using SIMD?
         }
     }
 }
@@ -307,13 +242,14 @@ void int16MatrixToFloat(const Complex_int16* source, Complex_float* dest, int si
 #define DEFAULT_ITER 1000000
 // Initialize test matrices and run benchmarks using my code vs Armadillo's library
 void runBenchmarks(int numIter = DEFAULT_ITER) {
+    //assert(dimensionsValid(NROWS, NCOLS));
     Complex_int16 A[NROWS * NCOLS] __attribute__((aligned(64))); // What to align it to?
     Complex_int16 B[NCOLS] __attribute__((aligned(64)));         // B is a vector
     Complex_int16 C[NROWS] __attribute__((aligned(64)));         // C is the resulting vector
     
     // Initialize matrices for AVX
-    generateMatrix(A, NROWS * NCOLS, 10);
-    generateMatrix(B, NCOLS, 10);
+    generateMatrix(A, NROWS * NCOLS, 5);
+    generateMatrix(B, NCOLS, 5);
     generateMatrix(C, NROWS, 0); // initialize C to all 0s
     
     // printMatrix(A, NROWS, NCOLS);
@@ -357,8 +293,6 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
     double vclTime = runVCLBenchmark(floatA, NROWS, NCOLS, floatB, floatC, numIter);
     double armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
     // Assert the resulting matrices are the same
-    printMatrix(floatC, NROWS, 1);
-    std::cout << armaC << std::endl;
     assert(matricesEqual(C, armaC));
     assert(matricesEqual(floatC, armaC));
 
@@ -384,9 +318,8 @@ static int showUsage(char *prog) {
 
 // testing complex dot product
 double runArmaDotBench(int numIter) {
-    arma::cx_fvec test(8);
+    arma::cx_fvec test(16);
     test.fill(arma::cx_float(6, 3));
-    std::cout << "Arma vec: " << test << std::endl;
     double start = getTime();
     arma::cx_float testDot;
     for(int i = 0; i < numIter; i++) {
@@ -398,31 +331,40 @@ double runArmaDotBench(int numIter) {
 
 double runMyDotBench(int numIter) {
     Complex_int16 test[16] __attribute__((aligned(64)));
-    Complex_int16 test1[16] __attribute__((aligned(64)));
+    //Complex_int16 test1[16] __attribute__((aligned(64)));
     for (int i = 0; i < 16; i++) {
         Complex_int16 num = {6, 3};
         test[i] = num;
-        test1[i] = num;
+        //test1[i] = num;
     }
     Complex_int16 res;
+    //__m512i mul;
     double start = getTime();
     for(int i = 0; i < numIter; i++) {
-        res = dotProduct16x32(*((__m512i *)test), *((__m512i *)test1));
+        __m512i a = _mm512_load_si512((const void*)test);
+        res = dotProduct16x32(a, a);
+        
+        //mul = _mm512_myComplexMult_epi16(a, a);
     }
-    return timeSince(start);
+    double time = timeSince(start);
     std::cout << "My result: " << "(" << res.real << "," << res.imag << ")" << std::endl;
+    return time;
 }
 
 double runVCLDotBench(int numIter) {
     Complex8f a(6,3);
-    printcx("VCL vec: ", a);
+    Complex8f b(6,3);
+    //__m512 c = _mm512_set_ps(6,3,6,3,6,3,6,3,6,3,6,3,6,3,6,3);
+    Complex8f d;
     Complex1f res;
     double start = getTime();
     for(int i = 0; i < numIter; i++) {
-        res = chorizontal_add(a*a);
+        res = chorizontal_add(a*a)
+            + chorizontal_add(b*b);
     }
-    std::cout << "My result: " << "(" << res.real() << "," << res.imag() << ")" << std::endl;
-    return timeSince(start);
+    double time = timeSince(start);
+    std::cout << "VLC result: " << "(" << res.real() << "," << res.imag() << ")" << std::endl;
+    return time;
 }
 
 void runDotBenchmarks(int numIter) {
@@ -430,19 +372,22 @@ void runDotBenchmarks(int numIter) {
     double avxTime = runMyDotBench(numIter);
     double armaTime = runArmaDotBench(numIter);
     double vclTime = runVCLDotBench(numIter);
+    std::cout << armaTime << ", " << avxTime << ", " << vclTime << std::endl;
     // Output results
     double avgArma = armaTime / (double)numIter;
     double avgAVX = avxTime / (double)numIter;
     double avgVCL = vclTime / (double)numIter;
     printf("Dot product executed %d times.\n", numIter);
-    printf("MKL/Armadillo:   %10.3f µs per iteration\n", avgArma);
-    printf("Intrinsics   :   %10.3f µs per iteration\n", avgAVX);
-    printf("%2.2fx MKL/Armadillo float dot\n\n", avgArma / avgAVX);
-    printf("Agner Fog VCL:   %10.3f µs per iteration\n", avgVCL);
-    printf("%2.2fx MKL/Armadillo float dot\n", avgArma / avgVCL);
+    printf("MKL/Armadillo:   %10.6f µs per iteration\n", avgArma);
+    printf("Intrinsics   :   %10.6f µs per iteration\n", avgAVX);
+    printf("%2.2fx MKL/Arma float dot\n\n", armaTime / avxTime);
+    printf("Agner Fog VCL:   %10.6f µs per iteration\n", avgVCL);
+    printf("%2.2fx MKL/Arma float dot\n", armaTime / vclTime);
 }
 
 int main(int argc, char **argv) {
+    // runDotBenchmarks(100000000);
+    // return 0;
     // Complex arr1[4] = {{1,2},{2,3},{3,4},{4,5}};
     // Complex arr2[4] = {{11,21},{21,31},{31,41},{41,51}};
     // __m512 res1 = _mm512_myComplexMult_ps(*(__m512*)arr1, *(__m512*)arr2);

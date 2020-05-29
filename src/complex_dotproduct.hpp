@@ -51,13 +51,10 @@ Complex_int16 hsum8x32(__m256i v);
 // Unused for now
 Complex_int16 hsum16x32(__m512i v);
 
-// returns vec1 * vec2, where each vector contains 8 Complex numbers (int16 real + int16 imag = 32 bits each)
-// Adapted Matt Scarpino's approach but for int16 instead of float
-// https://www.codeproject.com/Articles/874396/Crunching-Numbers-with-AVX-and-AVX
-__m256i _mm256_myComplexMult_epi16(__m256i vec1, __m256i vec2);
-
-// a dot b, where a and b are vectors with 16 elements, each a 32 bit complex number {int16 real, int16 imag}
-Complex_int16 dotProduct16x32(__m512i a, __m512i b);
+// // returns vec1 * vec2, where each vector contains 8 Complex numbers (int16 real + int16 imag = 32 bits each)
+// // Adapted Matt Scarpino's approach but for int16 instead of float
+// // https://www.codeproject.com/Articles/874396/Crunching-Numbers-with-AVX-and-AVX
+// __m256i _mm256_myComplexMult_epi16(__m256i vec1, __m256i vec2);
 
 // Definition of __v16hi in avxintrin.h
 // typedef short __v16hi __attribute__ ((__vector_size__ (32)));
@@ -81,14 +78,41 @@ typedef short __v8hi __attribute__ ((__vector_size__ (16)));
   int16_t imag = _mm_extract_epi16(__t10, 1); \
   Complex_int16 result = {real, imag}; \
   return result;
-//   __v4su __t9 = __builtin_shufflevector(__t8, __t8, 1, 0, 3, 2); \
-//   __v4su __t10 = __t8 op __t9; \
-//   return __t10[0]
 
-static __inline__ Complex_int16 __DEFAULT_FN_ATTRS512 _mm512_reduce_add_epi16(__m512i __W) {
+static inline Complex_int16 _mm512_reduce_add_epi16(__m512i __W) {
   _mm512_my_mask_reduce_operator(+);
 }
-__m512 _mm512_myComplexMult_ps(__m512 a, __m512 b);
-__m512i _mm512_myComplexMult_epi16(__m512i a, __m512i b);
+
+static inline __m512 _mm512_myComplexMult_ps(__m512 a, __m512 b) {
+    __m512 b_flip = _mm512_shuffle_ps(b,b,0xB1);   // Swap b.re and b.im
+    __m512 a_im   = _mm512_shuffle_ps(a,a,0xF5);   // Imag part of a in both
+    __m512 a_re   = _mm512_shuffle_ps(a,a,0xA0);   // Real part of a in both
+    __m512 aib    = _mm512_mul_ps(a_im, b_flip);   // (a.im*b.im, a.im*b.re)
+    return _mm512_fmaddsub_ps(a_re, b, aib);   // a_re * b +/- aib
+}
+static const int16_t temp0[32] = {1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14, 17, 16, 19, 18, 21, 20, 23, 22, 25, 24, 27, 26, 29, 28, 31, 30};
+static const int16_t temp1[32] = {1, 1, 3, 3, 5, 5, 7, 7, 9, 9, 11, 11, 13, 13, 15, 15, 17, 17, 19, 19, 21, 21, 23, 23, 25, 25, 27, 27, 29, 29, 31, 31};
+static const int16_t temp2[32] = {0, 0, 2, 2, 4, 4, 6, 6, 8, 8, 10, 10, 12, 12, 14, 14, 16, 16, 18, 18, 20, 20, 22, 22, 24, 24, 26, 26, 28, 28, 30, 30};
+static const int16_t temp3[32] = {-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1};
+const __m512i idx0 = _mm512_loadu_si512((const void*)temp0);
+const __m512i idx1 = _mm512_loadu_si512((const void*)temp1);
+const __m512i idx2 = _mm512_loadu_si512((const void*)temp2);
+const __m512i addsub = _mm512_loadu_si512((const void*)temp3);
+static inline __m512i _mm512_myComplexMult_epi16(__m512i a, __m512i b) {
+    // Not sure why _mm512_set_epi16 throws an error but the below array to vector conversion should be equivalent
+    // idx0 corresponds to indices to swap real and imag, idx1 sets both component to imag, idx2 sets both components to real
+    const __m512i b_flip = _mm512_permutexvar_epi16(idx0, b); // Swap b.re and b.im
+    const __m512i a_im = _mm512_permutexvar_epi16(idx1, a); // Imag part of a in both
+    const __m512i a_re = _mm512_permutexvar_epi16(idx2, a); // Real part of a in both
+    const __m512i aib = _mm512_mullo_epi16(a_im, b_flip);   // (a.im*b.im, a.im*b.re)
+    const __m512i areb = _mm512_mullo_epi16(a_re, b);   // a_re * b
+    const __m512i aib_addsub = _mm512_mullo_epi16(aib, addsub); // flips sign of even index values
+    return _mm512_add_epi16(areb, aib_addsub);   // areb +/- aib
+}
+// a dot b, where a and b are vectors with 16 elements, each a 32 bit complex number {int16 real, int16 imag}
+static inline Complex_int16 dotProduct16x32(__m512i a, __m512i b) {
+    return _mm512_reduce_add_epi16(_mm512_myComplexMult_epi16(a, b));
+}
+
 void print_m512(__m512 v);
 #endif
