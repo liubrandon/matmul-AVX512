@@ -66,34 +66,59 @@ static inline void matmulVCL(const Complex_float* A, int r1, int c1, const Compl
 
 // Complex matrix multiplication C = AB
 // where A has dimensions r1 x c1, B has dimensions c1 x 1 (B is a vector)
-static inline void matmulAVX512(const Complex_int16* A, int r1, int c1, const Complex_int16* B, Complex_int16* C) {
+static inline void matmulAVX512(const Complex_int16* A, const int r1, const int c1, const Complex_int16* B, Complex_int16* C) {
     static const __m512i bSlice[4] = {
         _mm512_loadu_si512((const void*)(0+B)),
         _mm512_loadu_si512((const void*)(16+B)),
         _mm512_loadu_si512((const void*)(32+B)),
         _mm512_loadu_si512((const void*)(48+B)),
     };
+    int cIdx = 0;
+    Complex_int16 tempC[64] __attribute__((aligned(64)));
+    memset((void*)tempC, 0, (size_t)r1);
     if(c1 == 16) { // Calculating dot product only needs one __m512i vector
-        for (int i = 0; i < r1 * c1; i += 16) { // treat i as the index of the Complex value inside A where A is row major
+        for(int i = 0; i < r1 * c1; i += 16, cIdx++) { // treat i as the index of the Complex value inside A where A is row major
             const Complex_int16 dp = dotProduct16x32(_mm512_loadu_si512((const void*)(A + i)), bSlice[0]);
-            *C = dp;
-            C += 1;
+            tempC[cIdx] = dp;
         }
-    } else if (c1 == 64) { // Calculating dot product needs 4 __m512i
-        int resIndex = 0;
-        // for(int r = 0; r < r1; r+=64) {
-        //     for(int c = 0; c < 64; c++) {
-                
+    }
+    else if (c1 == 64) { // Calculating dot product needs 4 __m512i
+        // Option B: Move down columns (slower?)
+        // Code to reuse bSlices to the maximum  
+        // int bIdx = 0;
+        // for(int c = 0; c < c1; c += 16, bIdx++, cIdx=0) { // c is the column offset, 512 bit wide stride
+        //     for(int r = 0; r < r1*c1; r+=64, cIdx++) {
+        //         // Reuse slice of B for each row (maximum number of reuses)
+        //         tempC[cIdx] = tempC[cIdx] + dotProduct16x32(_mm512_loadu_si512((const void*)(A + r + c)), bSlice[bIdx]);
         //     }
         // }
-        for (int i = 0; i < r1 * c1; i += 64, resIndex += 1) { // TODO: Change to properly block the matrices for cache locality
+        
+        for (int i = 0; i < r1 * c1; i += 64, cIdx += 1) { // TODO: Change to properly block the matrices for cache locality
+            // Option C: SIMD sum moving across rows
+            // Complex_int16 dpArr[4] = {dotProduct16x32(_mm512_loadu_si512((const void*)(A + i)), bSlice[0]),
+            //                          dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 16)), bSlice[1]),
+            //                          dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 32)), bSlice[2]),
+            //                          dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 48)), bSlice[3])};
+            // __m128i all4 = _mm_loadu_si128((const __m128i_u*)dpArr);
+            // __m128i idx = _mm_setr_epi16(4,5,6,7,0,1,2,3); // to swap front 4 and back 4
+            // __m128i sum1of2 = _mm_add_epi16(_mm_permutexvar_epi16(idx, all4), all4);
+            // __m128i idx1 = _mm_setr_epi16(2,3,0,1,0,0,0,0); // to swap front 2 and back 2
+            // __m128i sum2of2 = _mm_add_epi16(_mm_permutexvar_epi16(idx1, sum1of2), sum1of2);
+            // const Complex_int16 dp = {static_cast<int16_t>(_mm_cvtsi128_si32(sum2of2)),
+            //                           static_cast<int16_t>(_mm_extract_epi16(sum2of2, 1))};
+            // end SIMD sum (slower?)
+
+            // Option A: move across rows
             const Complex_int16 dp = dotProduct16x32(_mm512_loadu_si512((const void*)(A + i)), bSlice[0])
-                                   + dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 16)), bSlice[1])
-                                   + dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 32)), bSlice[2])
-                                   + dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 48)), bSlice[3]);
-            C[resIndex] = dp;
-            // sum up using SIMD?
+                                    + dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 16)), bSlice[1])
+                                    + dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 32)), bSlice[2])
+                                    + dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 48)), bSlice[3]);
+            tempC[cIdx] = dp;
         }
+    }
+    // Store tempC into C
+    for(int r = 0; r < r1; r+=16) {
+        _mm512_storeu_si512((void*)(C+r), _mm512_loadu_si512((const void*)(tempC+r)));
     }
 }
 
@@ -194,42 +219,6 @@ double runVCLBenchmark(Complex_float* A, int r1, int c1, Complex_float* B, Compl
     return timeSince(start);
 }
 
-// Initializes matrix incrementally from 0 to size (% mod)
-// where size = # rows * # columns
-// if mod is 0 then fill with zeros
-void generateVCLMatrix(Complex1f* mat, int size, int mod = 30) {
-    Complex1f zero(0,0);
-    for (int i = 0; i < size; i++) {
-        float ri = static_cast<float>((i % mod));
-        Complex1f num(ri, ri);
-        mat[i] = mod ? num : zero;
-    }
-}
-
-// Prints matrix in row major order
-void printVCLMatrix(const Complex1f* mat, int rows, int cols) {
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            printf("(%f,%f) ", mat[i * cols + j].real(), mat[i * cols + j].imag());
-        }
-        printf("\n");
-    }
-}
-
-// Copies int16_t integers stored in source and converts them to floating point
-// and stores them in dest; rows x cols is the size of both matrices
-arma::cx_fmat vclMatrixToArma(const Complex1f* source, int rows, int cols) {
-    arma::fmat real(rows, cols);
-    arma::fmat imag(rows, cols);
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            real(i, j) = source[i * cols + j].real();
-            imag(i, j) = source[i * cols + j].imag();
-        }
-    }
-    arma::cx_fmat armaCopy(real, imag);
-    return armaCopy;
-}
 void int16MatrixToFloat(const Complex_int16* source, Complex_float* dest, int size) {
     for(int i = 0; i < size; i++) {
         Complex_float num = {static_cast<float>(source[i].real), static_cast<float>(source[i].imag)};
@@ -237,7 +226,7 @@ void int16MatrixToFloat(const Complex_int16* source, Complex_float* dest, int si
     }
 }
 // Supresses ISO C++ warning about variable length array
-#define NROWS 64
+#define NROWS 16
 #define NCOLS 16
 #define DEFAULT_ITER 1000000
 // Initialize test matrices and run benchmarks using my code vs Armadillo's library
@@ -248,50 +237,29 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
     Complex_int16 C[NROWS] __attribute__((aligned(64)));         // C is the resulting vector
     
     // Initialize matrices for AVX
-    generateMatrix(A, NROWS * NCOLS, 5);
-    generateMatrix(B, NCOLS, 5);
+    generateMatrix(A, NROWS * NCOLS, 40);
+    generateMatrix(B, NCOLS, 40);
     generateMatrix(C, NROWS, 0); // initialize C to all 0s
     
-    // printMatrix(A, NROWS, NCOLS);
-    // printMatrix(B, NROWS, 1);
-    // printMatrix(C, NROWS, 1);
-
-    // Complex8f firstrow;
-    // firstrow.load((float*)A);
-    // printcx("First row of A: ", *(Complex8f*)A);
-    // return;
-
-    // Complex1f A1[8 * 8] __attribute__((aligned(64))); // What to align it to?
-    // Complex1f B1[8] __attribute__((aligned(64)));    
-    // Complex1f C1[8] __attribute__((aligned(64)));
-    // generateVCLMatrix(A1, 64);
-    // generateVCLMatrix(B1, 8);
-    // generateVCLMatrix(C1, 8, 0);
-
-    // printVCLMatrix(A1, 8, 8);
-    // printVCLMatrix(B1, 8, 1);
-    // printVCLMatrix(C1, 8, 1);
-
-    
-
     // Initialize matrices for Armadillo (Copy from A, B, C)
     arma::cx_fmat armaA = int16MatrixToArma(A, NROWS, NCOLS);
     arma::cx_fmat armaB = int16MatrixToArma(B, NCOLS, 1);
     arma::cx_fmat armaC = int16MatrixToArma(C, NROWS, 1);
 
+    // Initialize matrices for VCL (Copy from A, B, C)
     Complex_float floatA[NROWS * NCOLS] __attribute__((aligned(64)));
     Complex_float floatB[NCOLS] __attribute__((aligned(64)));         // B is a vector
     Complex_float floatC[NROWS] __attribute__((aligned(64))); 
     int16MatrixToFloat(A, floatA, NROWS*NCOLS);
     int16MatrixToFloat(B, floatB, NCOLS);
     int16MatrixToFloat(C, floatC, NROWS);
-    // std::cout << armaA.n_rows << "x" << armaA.n_cols << std::endl;
-    // std::cout << armaB.n_rows << "x" << armaB.n_cols << std::endl;
-    // std::cout << armaC.n_rows << "x" << armaC.n_cols << std::endl;
+
     // Run benchmarks for both AVX and Armadillo
     double avxTime = runAVXBenchmark(A, NROWS, NCOLS, B, C, numIter);
     double vclTime = runVCLBenchmark(floatA, NROWS, NCOLS, floatB, floatC, numIter);
     double armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
+    // printMatrix(C, NROWS, 1);
+    // std::cout << armaC << std::endl;
     // Assert the resulting matrices are the same
     assert(matricesEqual(C, armaC));
     assert(matricesEqual(floatC, armaC));
@@ -301,12 +269,12 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
     double avgArma = armaTime / (double)numIter;
     double avgAVX = avxTime / (double)numIter;
     printf("C = AB executed %d times.\n", numIter);
-    printf("Dimensions:       (%u x %u) * (%u x 1)\n", NROWS, NCOLS, NCOLS);
-    printf("MKL/Arma:  %10.3f µs per iteration\n\n", avgArma);
-    printf("int16_t:   %10.3f µs per iteration\n", avgAVX);
-    printf("%2.2fx MKL/Armadillo float matrix multiply\n\n", avgArma / avgAVX);
-    printf("VCL float: %10.3f µs per iteration\n", avgVCL);
-    printf("%2.2fx MKL/Armadillo float matrix multiply\n", avgArma / avgVCL);
+    printf("Dimensions:          (%u x %u) * (%u x 1)\n", NROWS, NCOLS, NCOLS);
+    printf("float (MKL/Arma): %7.3f µs per iteration\n\n", avgArma);
+    printf("int16_t (AVX512): %7.3f µs per iteration\n", avgAVX);
+    printf("%2.2fx MKL/Armadillo float matrix * vector\n\n", avgArma / avgAVX);
+    printf("float (VCL):      %7.3f µs per iteration\n", avgVCL);
+    printf("%2.2fx MKL/Armadillo float matrix * vector\n", avgArma / avgVCL);
 }
 
 static int showUsage(char *prog) {

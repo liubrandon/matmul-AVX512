@@ -42,14 +42,14 @@ void print_m128i(__m128i v);
 // https://stackoverflow.com/questions/60108658/fastest-method-to-calculate-sum-of-all-packed-32-bit-integers-using-avx512-or-av
 
 // Sums the 4 Complex numbers packed into v
-Complex_int16 hsum4x32(__m128i v);
+// Complex_int16 hsum4x32(__m128i v);
 
-// Sums the low half with the high half of v to reduce into __m128i
-Complex_int16 hsum8x32(__m256i v);
+// // Sums the low half with the high half of v to reduce into __m128i
+// Complex_int16 hsum8x32(__m256i v);
 
-// Sums the low half with the high half of v to reduce into __m256i
-// Unused for now
-Complex_int16 hsum16x32(__m512i v);
+// // Sums the low half with the high half of v to reduce into __m256i
+// // Unused for now
+// Complex_int16 hsum16x32(__m512i v);
 
 // // returns vec1 * vec2, where each vector contains 8 Complex numbers (int16 real + int16 imag = 32 bits each)
 // // Adapted Matt Scarpino's approach but for int16 instead of float
@@ -83,6 +83,7 @@ static inline Complex_int16 _mm512_reduce_add_epi16(__m512i __W) {
   _mm512_my_mask_reduce_operator(+);
 }
 
+// VCL implementation for single precision float
 static inline __m512 _mm512_myComplexMult_ps(__m512 a, __m512 b) {
     __m512 b_flip = _mm512_shuffle_ps(b,b,0xB1);   // Swap b.re and b.im
     __m512 a_im   = _mm512_shuffle_ps(a,a,0xF5);   // Imag part of a in both
