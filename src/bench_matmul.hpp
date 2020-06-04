@@ -180,10 +180,10 @@ static inline void runBenchmarks(int numIter = DEFAULT_ITER) {
     std::vector<double> avxTimes;
     std::vector<double> vclTimes;
     std::vector<double> v2Times;
-    for(int i = 16; i > 0; i-=16) {
+    for(int i = 16; i > 0; i-=64) {
         int nrows = i;
         int ncols = 64;
-        int mod = 40;
+        int mod = 10;
         Complex_int16 A[nrows * ncols] __attribute__((aligned(64))); // What to align it to?
         Complex_int16 B[ncols] __attribute__((aligned(64)));         // B is a vector
         Complex_int16 C[nrows] __attribute__((aligned(64)));         // C is the resulting vector
@@ -220,7 +220,9 @@ static inline void runBenchmarks(int numIter = DEFAULT_ITER) {
         generateMatrix(fastA, nrows * ncols, mod);
         generateMatrix(fastB, ncols, mod);
         generateMatrix(fastC, nrows, 0); // initialize C to all 0s
-        double v2Time = runV2Benchmark(fastA, nrows, ncols, fastB, fastC, 1);
+        // printMatrix(fastA, nrows, ncols);
+        // printMatrix(fastB, ncols, 1);
+        double v2Time = runV2Benchmark(fastA, nrows, ncols, fastB, fastC, numIter);
         double avxTime = runAVXBenchmark(A, nrows, ncols, B, C, numIter);
         double vclTime = runVCLBenchmark(floatA, nrows, ncols, floatB, floatC, numIter);
         double armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
@@ -234,9 +236,10 @@ static inline void runBenchmarks(int numIter = DEFAULT_ITER) {
         totalAVXTime+=avxTime;
         totalV2Time+=v2Time;
 
-        printMatrix(C, nrows, 1);
-        std::cout << std::endl;
-        printMatrix(fastC, nrows, 1);
+        // std::cout << armaC << std::endl;
+        // //printMatrix(C, nrows, 1);
+        // std::cout << std::endl;
+        // printMatrix(fastC, nrows, 1);
         // std::cout << armaC << std::endl;
         // printMatrix(floatC, nrows, 1);
         // Assert the resulting matrices are the same

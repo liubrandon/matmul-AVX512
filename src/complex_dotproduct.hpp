@@ -62,7 +62,7 @@ typedef short __v8hi __attribute__ ((__vector_size__ (16)));
   Complex_int16 result = {real, imag}; \
   return result;
 
-static inline Complex_int16 _mm512_reduce_add_epi16(__m512i __W) {
+static Complex_int16 _mm512_reduce_add_epi16(__m512i __W) {
   _mm512_my_mask_reduce_operator(+);
 }
 
@@ -83,7 +83,7 @@ const __m512i idx0 = _mm512_loadu_si512((const void*)temp0);
 const __m512i idx1 = _mm512_loadu_si512((const void*)temp1);
 const __m512i idx2 = _mm512_loadu_si512((const void*)temp2);
 const __m512i addsub = _mm512_loadu_si512((const void*)temp3);
-static inline __m512i _mm512_myComplexMult_epi16(__m512i a, __m512i b) {
+static __m512i _mm512_myComplexMult_epi16(__m512i a, __m512i b) {
     // Not sure why _mm512_set_epi16 throws an error but the below array to vector conversion should be equivalent
     // idx0 corresponds to indices to swap real and imag, idx1 sets both component to imag, idx2 sets both components to real
     const __m512i b_flip = _mm512_permutexvar_epi16(idx0, b); // Swap b.re and b.im
@@ -103,16 +103,13 @@ static inline Complex_int16 dotProduct16x32(__m512i a, __m512i b) {
 #define IMAG 1
 // returns __m512i vector with 16 elements in the column
 // beginning with the int16_t pointed at by ptr[i*ncols+j]
-static inline __m256i columnTo256Vec(const Complex_int16* ptr, int i, int j, int ncols, int nrows, int mode) {
+static __m256i columnTo256Vec(const Complex_int16* ptr, int i, int j, int nrows, int ncols, int mode) {
     int16_t temp[16];
     for(int k = 0; k < 16; k++) {
-        temp[k] = (mode == REAL) ? ptr[i*ncols+j+(k*ncols)].real : ptr[i*ncols+j+(k*ncols)].imag;
+        Complex_int16 curr = ptr[i*ncols+j+(k*ncols)];
+        temp[k] = (mode == REAL) ? curr.real : curr.imag;
     }
     return _mm256_loadu_si256((const __m256i*)temp);
-}
-
-static inline Complex_int16 v2DotProduct16x32(__m512i a, __m512i b) {
-    return _mm512_reduce_add_epi16(_mm512_myComplexMult_epi16(a, b));
 }
 
 

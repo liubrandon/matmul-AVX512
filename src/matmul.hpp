@@ -74,7 +74,7 @@ static inline void matmulVCL(const Complex_float* A, int r1, int c1, const Compl
 
 // Complex matrix multiplication C = AB
 // where A has dimensions r1 x c1, B has dimensions c1 x 1 (B is a vector)
-static inline void matmulAVX512(const Complex_int16* A, const int r1, const int c1, const Complex_int16* B, Complex_int16* C) {
+void matmulAVX512(const Complex_int16* A, const int r1, const int c1, const Complex_int16* B, Complex_int16* C) {
     static const __m512i bSlice[4] = {
         _mm512_loadu_si512((const void*)(0+B)),
         _mm512_loadu_si512((const void*)(16+B)),
@@ -146,7 +146,7 @@ static inline void matmulAVX512(const Complex_int16* A, const int r1, const int 
     }
 }
 
-static inline void v2matmulAVX512(const Complex_int16* A, const int r1, const int c1, const Complex_int16* B, Complex_int16* C) {
+void v2matmulAVX512(const Complex_int16* A, const int r1, const int c1, const Complex_int16* B, Complex_int16* C) {
     for(int r = 0; r < r1; r+=16) {
         __m256i realResult = _mm256_set1_epi64x(0); // zero out accumulators
         __m256i imagResult = _mm256_set1_epi64x(0);
@@ -173,12 +173,9 @@ static inline void v2matmulAVX512(const Complex_int16* A, const int r1, const in
         }
         int16_t* realArray = (int16_t*)(&realResult);
         int16_t* imagArray = (int16_t*)(&imagResult);
-        int order[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};//{0,4,8,1,5,9,13,6,10,14,7,11,15,8,12,5};
         for(int i = 0; i < 16; i++) {
-            C[i+r] = {realArray[order[i]], imagArray[order[i]]};
+            C[i+r] = {realArray[i], imagArray[i]};
         } // extract with intrinsics?
     }
-    
-
 }
 #endif
