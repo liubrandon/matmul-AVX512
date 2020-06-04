@@ -39,5 +39,10 @@ tags
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Added exceptions #
+####################
 src/temp.py
 src/results.txt
+src/latest results.txt
+src/matmul_arb.cpp

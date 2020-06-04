@@ -19,11 +19,12 @@ void print_m512i(__m512i v) {
 
 // Takes the 256 bit vector of integers v (__m256i ) and
 // prints the 16 short ints (16 bits each) stored inside
-void print_m256i(__m256i v) {
+void print_m256i(__m256i v, int mode = IMAG) {
     int16_t* val = (int16_t*)&v;
     std::cout << "__m256i: ";
     for(int i = 0; i < 16; i+=2) {
-        std::cout << "(" << std::setw(2) << val[i] << "," << std::setw(2) << val[i+1] << "), ";
+        (mode == IMAG) ? std::cout << "(" << val[i] << "," << val[i+1] << "), " :
+                         std::cout << val[i] << ", "  << val[i+1] << ", ";
     }
     std::cout << std::endl;
 }

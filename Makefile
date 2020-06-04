@@ -10,14 +10,14 @@ ASM      := $(SRC:$(SRC_DIR)/%.cpp=$(ASM_DIR)/%.s)
 # Compiler, preprocessor, compiler flags, linker flags, and library flags
 CXX		 := g++
 CPPFLAGS :=		# https://colfaxresearch.com/knl-avx512/#code:vecadd Info on avx flags												
-CFLAGS 	 := -g3 -I/home/brandon/matmul/lib/vcl-2.01.02 -std=c++17 -Wall -Wextra -pedantic -march=native -O3 -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl -mavx512ifma -mavx512vbmi #-fopt-info-vec-all
+CFLAGS 	 := -I/home/brandon/matmul/lib/vcl-2.01.02 -std=c++17 -march=native -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl -mavx512ifma -mavx512vbmi -O3# -Wall -Wextra -pedantic # -fopt-info-vec-all
 LDFLAGS  := -Wl,--no-as-needed
 LDLIBS	 := -larmadillo -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl 
 
 .PHONY: assembly all clean
 
 # Rules
-all: $(TARGET)
+all: clean $(TARGET)
 
 $(TARGET): $(OBJ)
 	$(CXX) -O3 $(LDFLAGS) $^ $(LDLIBS) -o $@
@@ -29,6 +29,6 @@ $(OBJ_DIR):
 	mkdir $@
 
 clean:
-		rm -f $(OBJ) $(TARGET) *.out vgcore.* $(ASM)
+		rm -f $(OBJ) $(TARGET) *.out vgcore.*
 
 # Dependencies

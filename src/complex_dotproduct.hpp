@@ -1,7 +1,7 @@
 #ifndef COMPLEX_DOTPRODUCT_HPP
 #define COMPLEX_DOTPRODUCT_HPP
-
 #include "immintrin.h"
+#include <iostream>
 
 struct Complex_float {
     float real;
@@ -17,44 +17,27 @@ struct Complex_int16 {
     int16_t real;
     int16_t imag;
     Complex_int16& operator+(const Complex_int16& rhs){ 
-            real += rhs.real;
-            imag += rhs.imag;
-            return *this;
+        real += rhs.real;
+        imag += rhs.imag;
+        return *this;
+    }
+    bool operator==(const Complex_int16& rhs) const { 
+        return ((real != rhs.real) | (imag != rhs.imag)) ? false : true;
+    }
+    bool operator!=(const Complex_int16& rhs) const { 
+        return !(*this == rhs);
+    }
+    friend std::ostream& operator<<(std::ostream& os, const Complex_int16& c) {
+        os << "(" << c.real << "," << c.imag << ")";
+        return os;
     }
 };
 
 // Functions to print Intel vector types to help with debugging 
-
-// Takes the 512 bit vector of integers v (__m512i ) and
-// prints the 32 short ints (16 bits each) stored inside
 void print_m512i(__m512i v);
-
-// Takes the 256 bit vector of integers v (__m256i ) and
-// prints the 16 short ints (16 bits each) stored inside
-void print_m256i(__m256i v);
-
-// Takes the 128 bit vector of integers v (__m128i ) and
-// prints the 8 short ints (16 bits each) stored inside
+void print_m256i(__m256i v, int mode);
 void print_m128i(__m128i v);
-
-// dotProduct32x16() helper functions below
-// Adapted Peter Cordes' 2/20/2020 horizontal sum but for int16 instead of int32
-// https://stackoverflow.com/questions/60108658/fastest-method-to-calculate-sum-of-all-packed-32-bit-integers-using-avx512-or-av
-
-// Sums the 4 Complex numbers packed into v
-// Complex_int16 hsum4x32(__m128i v);
-
-// // Sums the low half with the high half of v to reduce into __m128i
-// Complex_int16 hsum8x32(__m256i v);
-
-// // Sums the low half with the high half of v to reduce into __m256i
-// // Unused for now
-// Complex_int16 hsum16x32(__m512i v);
-
-// // returns vec1 * vec2, where each vector contains 8 Complex numbers (int16 real + int16 imag = 32 bits each)
-// // Adapted Matt Scarpino's approach but for int16 instead of float
-// // https://www.codeproject.com/Articles/874396/Crunching-Numbers-with-AVX-and-AVX
-// __m256i _mm256_myComplexMult_epi16(__m256i vec1, __m256i vec2);
+void print_m512(__m512 v);
 
 // Definition of __v16hi in avxintrin.h
 // typedef short __v16hi __attribute__ ((__vector_size__ (32)));
@@ -83,14 +66,15 @@ static inline Complex_int16 _mm512_reduce_add_epi16(__m512i __W) {
   _mm512_my_mask_reduce_operator(+);
 }
 
-// VCL implementation for single precision float
-static inline __m512 _mm512_myComplexMult_ps(__m512 a, __m512 b) {
-    __m512 b_flip = _mm512_shuffle_ps(b,b,0xB1);   // Swap b.re and b.im
-    __m512 a_im   = _mm512_shuffle_ps(a,a,0xF5);   // Imag part of a in both
-    __m512 a_re   = _mm512_shuffle_ps(a,a,0xA0);   // Real part of a in both
-    __m512 aib    = _mm512_mul_ps(a_im, b_flip);   // (a.im*b.im, a.im*b.re)
-    return _mm512_fmaddsub_ps(a_re, b, aib);   // a_re * b +/- aib
-}
+// // VCL implementation for single precision float
+// static inline __m512 _mm512_myComplexMult_ps(__m512 a, __m512 b) {
+//     __m512 b_flip = _mm512_shuffle_ps(b,b,0xB1);   // Swap b.re and b.im
+//     __m512 a_im   = _mm512_shuffle_ps(a,a,0xF5);   // Imag part of a in both
+//     __m512 a_re   = _mm512_shuffle_ps(a,a,0xA0);   // Real part of a in both
+//     __m512 aib    = _mm512_mul_ps(a_im, b_flip);   // (a.im*b.im, a.im*b.re)
+//     return _mm512_fmaddsub_ps(a_re, b, aib);   // a_re * b +/- aib
+// }
+
 static const int16_t temp0[32] = {1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14, 17, 16, 19, 18, 21, 20, 23, 22, 25, 24, 27, 26, 29, 28, 31, 30};
 static const int16_t temp1[32] = {1, 1, 3, 3, 5, 5, 7, 7, 9, 9, 11, 11, 13, 13, 15, 15, 17, 17, 19, 19, 21, 21, 23, 23, 25, 25, 27, 27, 29, 29, 31, 31};
 static const int16_t temp2[32] = {0, 0, 2, 2, 4, 4, 6, 6, 8, 8, 10, 10, 12, 12, 14, 14, 16, 16, 18, 18, 20, 20, 22, 22, 24, 24, 26, 26, 28, 28, 30, 30};
@@ -115,7 +99,22 @@ static inline Complex_int16 dotProduct16x32(__m512i a, __m512i b) {
     return _mm512_reduce_add_epi16(_mm512_myComplexMult_epi16(a, b));
 }
 
-void print_m512(__m512 v);
+#define REAL 0
+#define IMAG 1
+// returns __m512i vector with 16 elements in the column
+// beginning with the int16_t pointed at by ptr[i*ncols+j]
+static inline __m256i columnTo256Vec(const Complex_int16* ptr, int i, int j, int ncols, int nrows, int mode) {
+    int16_t temp[16];
+    for(int k = 0; k < 16; k++) {
+        temp[k] = (mode == REAL) ? ptr[i*ncols+j+(k*ncols)].real : ptr[i*ncols+j+(k*ncols)].imag;
+    }
+    return _mm256_loadu_si256((const __m256i*)temp);
+}
+
+static inline Complex_int16 v2DotProduct16x32(__m512i a, __m512i b) {
+    return _mm512_reduce_add_epi16(_mm512_myComplexMult_epi16(a, b));
+}
+
 
 // dotProduct32x16() helper functions below
 // Adapted Peter Cordes' 2/20/2020 horizontal sum but rewrote for Complex int16 numbers
