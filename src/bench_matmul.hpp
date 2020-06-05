@@ -19,11 +19,6 @@
 #include "vectorclass.h"
 #include "complexvec1.h"
 
-// // Currently, the program supports matrices of size 64x64, 16x64, and 64x16 multiplied by vectors
-// bool dimensionsValid(int r1, int c1) {
-//    return (r1 == 16 && c1 == 64) || (r1 == 64 && c1 == 16) || (r1 == 64 && c1 == 64);
-// }
-
 // Prints matrix in row major order
 template <typename Complex>
 void printMatrix(const Complex* mat, int rows, int cols) {
@@ -33,8 +28,10 @@ void printMatrix(const Complex* mat, int rows, int cols) {
             if(printFloat) {
                 printf("(%.2f,%.2f) ", static_cast<float>(mat[i * cols + j].real), static_cast<float>(mat[i * cols + j].imag));
             } else {
-                printf("(%2d,%2d) ", static_cast<int16_t>(mat[i * cols + j].real), static_cast<int16_t>(mat[i * cols + j].imag));
+                printf("(%d,%d)", static_cast<int16_t>(mat[i * cols + j].real), static_cast<int16_t>(mat[i * cols + j].imag));
             }
+            if(j == 31)
+                printf(" ");
         }
         printf("\n");
     }
@@ -121,10 +118,33 @@ arma::cx_fmat int16MatrixToArma(Complex_int16* source, int rows, int cols) {
     return timeSince(start);
 }
 
- double runV2Benchmark(Complex_int16* A, int r1, int c1, Complex_int16* B, Complex_int16* C, int numIter) {
+void printIntMatrix(const int16_t* A, int nrows, int ncols) {
+    for(int i = 0; i < nrows; i++) {
+        for(int j = 0; j < ncols; j++) {
+            std::cout << A[i*ncols+j] << ", ";
+        }
+        std::cout << std::endl;
+    }
+}
+ double runColMajorBenchmark(Complex_int16* A, int r1, int c1, Complex_int16* B, Complex_int16* C, int numIter) {
+    // seperate A into real and imag and make column major
+    int16_t Areal[r1*c1] __attribute__((aligned(64)));
+    int16_t Aimag[r1*c1] __attribute__((aligned(64)));
+    for(int i = 0; i < r1; i++) {
+        for(int j = 0; j < c1; j++) {
+            Areal[j*r1+i] = A[i*c1+j].real;
+            Aimag[j*r1+i] = A[i*c1+j].imag;
+        }
+    }
+    // printMatrix(A, r1, c1);
+    // std::cout << std::endl;
+    // printIntMatrix(Areal, r1, c1);
+    // std::cout << std::endl;
+    // printIntMatrix(Aimag, r1, c1);
+    // return 0.0;
     double start = getTime();
     for (int i = 0; i < numIter; i++) {
-        v2matmulAVX512(A, r1, c1, B, C);
+        matmulAVX512_colmajor(Areal, Aimag, r1, c1, B, C);
     }
     return timeSince(start);
 }
@@ -175,15 +195,15 @@ static inline void runBenchmarks(int numIter = DEFAULT_ITER) {
     double totalAVXTime = 0.0;
     double totalArmaTime = 0.0;
     double totalVCLTime = 0.0;
-    double totalV2Time = 0.0;
+    double totalColMajorTime = 0.0;
     std::vector<double> armaTimes;
     std::vector<double> avxTimes;
     std::vector<double> vclTimes;
-    std::vector<double> v2Times;
-    for(int i = 16; i > 0; i-=64) {
-        int nrows = i;
-        int ncols = 64;
-        int mod = 10;
+    std::vector<double> colMajorTimes;
+    for(int i = 64; i > 0; i--) {
+        int nrows = 16;
+        int ncols = i;
+        int mod = 6;
         Complex_int16 A[nrows * ncols] __attribute__((aligned(64))); // What to align it to?
         Complex_int16 B[ncols] __attribute__((aligned(64)));         // B is a vector
         Complex_int16 C[nrows] __attribute__((aligned(64)));         // C is the resulting vector
@@ -213,92 +233,68 @@ static inline void runBenchmarks(int numIter = DEFAULT_ITER) {
         // printMatrix(floatA, nrows, ncols);
         // printMatrix(floatB, ncols, 1);
         // printMatrix(floatC, nrows, 1);
-        // Matrices for v2
+        // Matrices for colMajor
         Complex_int16 fastA[nrows * ncols] __attribute__((aligned(64))); // What to align it to?
         Complex_int16 fastB[ncols] __attribute__((aligned(64)));         // B is a vector
         Complex_int16 fastC[nrows] __attribute__((aligned(64)));
         generateMatrix(fastA, nrows * ncols, mod);
         generateMatrix(fastB, ncols, mod);
         generateMatrix(fastC, nrows, 0); // initialize C to all 0s
-        // printMatrix(fastA, nrows, ncols);
+        //printMatrix(fastA, nrows, ncols);
         // printMatrix(fastB, ncols, 1);
-        double v2Time = runV2Benchmark(fastA, nrows, ncols, fastB, fastC, numIter);
-        double avxTime = runAVXBenchmark(A, nrows, ncols, B, C, numIter);
-        double vclTime = runVCLBenchmark(floatA, nrows, ncols, floatB, floatC, numIter);
+        // double avxTime = runAVXBenchmark(A, nrows, ncols, B, C, numIter);
+        // double vclTime = runVCLBenchmark(floatA, nrows, ncols, floatB, floatC, numIter);
         double armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
+        double colMajorTime = runColMajorBenchmark(fastA, nrows, ncols, fastB, fastC, numIter);
 
+        // vclTimes.push_back(vclTime);
+        // avxTimes.push_back(avxTime);
         armaTimes.push_back(armaTime);
-        vclTimes.push_back(vclTime);
-        avxTimes.push_back(avxTime);
-        v2Times.push_back(v2Time);
+        colMajorTimes.push_back(colMajorTime);
+        // totalVCLTime+=vclTime;
+        // totalAVXTime+=avxTime;
         totalArmaTime+=armaTime;
-        totalVCLTime+=vclTime;
-        totalAVXTime+=avxTime;
-        totalV2Time+=v2Time;
+        totalColMajorTime+=colMajorTime;
 
-        // std::cout << armaC << std::endl;
-        // //printMatrix(C, nrows, 1);
+        //std::cout << armaC << std::endl;
+        // printMatrix(C, nrows, 1);
         // std::cout << std::endl;
         // printMatrix(fastC, nrows, 1);
         // std::cout << armaC << std::endl;
         // printMatrix(floatC, nrows, 1);
         // Assert the resulting matrices are the same
-        assert(matricesEqual(C, armaC));
-        assert(matricesEqual(floatC, armaC));
+        // assert(matricesEqual(C, armaC));
+        // assert(matricesEqual(floatC, armaC));
         assert(matricesEqual(fastC, armaC));
 
         // Output results
-        double avgVCL = vclTime / (double)numIter;
+        // double avgVCL = vclTime / (double)numIter;
+        // double avgAVX = avxTime / (double)numIter;
         double avgArma = armaTime / (double)numIter;
-        double avgAVX = avxTime / (double)numIter;
-        double avgV2 = v2Time / (double)numIter;
+        double avgColMajor = colMajorTime / (double)numIter;
 
         printf("Dimensions:          (%u x %u) * (%u x 1)\n", nrows, ncols, ncols);
         printf("Linear precoding benchmark s' = Ws executed %d times.\n", numIter);
-        printf("float (MKL/Arma): %7.3f µs per iteration\n\n", avgArma);
+        printf("float    (MKL/Armadillo): %7.3f µs per iteration\n\n", avgArma);
 
-        printf("int16_t (AVX512): %7.3f µs per iteration\n", avgAVX);
-        printf("%2.2fx MKL/Armadillo float matrix * vector\n\n", avgArma / avgAVX);
+        // printf("int16_t (AVX512): %7.3f µs per iteration\n", avgAVX);
+        // printf("%2.2fx MKL/Armadillo float matrix * vector\n\n", avgArma / avgAVX);
 
-        printf("v2      (AVX512): %7.3f µs per iteration\n", avgV2);
-        printf("%2.2fx MKL/Armadillo float matrix * vector\n\n", avgArma / avgV2);
+        printf("int16/column maj (AVX512): %7.3f µs per iteration\n", avgColMajor);
+        printf("%2.2fx MKL/Armadillo float matrix * vector\n\n", avgArma / avgColMajor);
 
-        printf("float (VCL):      %7.3f µs per iteration\n", avgVCL);
-        printf("%2.2fx MKL/Armadillo float matrix * vector\n", avgArma / avgVCL);
+        // printf("float (VCL):      %7.3f µs per iteration\n", avgVCL);
+        // printf("%2.2fx MKL/Armadillo float matrix * vector\n", avgArma / avgVCL);
         printf("       -----------------------\n\n");
     }
     printVector(armaTimes);
-    printVector(avxTimes);
-    printVector(vclTimes);
-    printVector(v2Times);
+    // printVector(avxTimes);
+    // printVector(vclTimes);
+    printVector(colMajorTimes);
 
-    printf("int16 version ran %2.3fx MKL/Armadillo on average\n", totalArmaTime/totalAVXTime);
-    printf("float version ran %2.3fx MKL/Armadillo on average\n", totalArmaTime/totalVCLTime);
-    printf("v2 version ran %2.3fx MKL/Armadillo on average\n", totalArmaTime/totalV2Time);
-}
-
-void newBench(void) {
-    int nrows = 16;
-    int ncols = 16;
-    int mod = 10;
-    Complex_int16 A[nrows * ncols] __attribute__((aligned(64))); // What to align it to?
-    Complex_int16 B[ncols] __attribute__((aligned(64)));         // B is a vector
-    Complex_int16 C[nrows] __attribute__((aligned(64)));         // C is the resulting vector
-    generateMatrix(A, nrows * ncols, mod);
-    generateMatrix(B, ncols, mod);
-    generateMatrix(C, nrows, 0); // initialize C to all 0s
-    Complex_int16 fastA[nrows * ncols] __attribute__((aligned(64))); // What to align it to?
-    Complex_int16 fastB[ncols] __attribute__((aligned(64)));         // B is a vector
-    Complex_int16 fastC[nrows] __attribute__((aligned(64)));
-    generateMatrix(fastA, nrows * ncols, mod);
-    generateMatrix(fastB, ncols, mod);
-    generateMatrix(fastC, nrows, 0); // initialize C to all 0s
-    double v2Time = runV2Benchmark(fastA, nrows, ncols, fastB, fastC, 1);
-    double avxTime = runAVXBenchmark(A, nrows, ncols, B, C, 1);
-    printMatrix(C, nrows, 1);
-    std::cout << std::endl;
-    printMatrix(fastC, nrows, 1);
-    assert(sameTypeMatricesEqual(C, fastC, nrows));
+    // printf("int16 version ran %2.3fx MKL/Armadillo on average\n", totalArmaTime/totalAVXTime);
+    // printf("float version ran %2.3fx MKL/Armadillo on average\n", totalArmaTime/totalVCLTime);
+    printf("colMajor version ran %2.3fx MKL/Armadillo on average\n", totalArmaTime/totalColMajorTime);
 }
 
 #endif

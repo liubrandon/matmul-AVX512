@@ -146,14 +146,15 @@ void matmulAVX512(const Complex_int16* A, const int r1, const int c1, const Comp
     }
 }
 
-void v2matmulAVX512(const Complex_int16* A, const int r1, const int c1, const Complex_int16* B, Complex_int16* C) {
-    for(int r = 0; r < r1; r+=16) {
+// pass in real and imag matrices where r1 x c1 is the size of Areal
+void matmulAVX512_colmajor(const int16_t* Areal, const int16_t* Aimag, const int r1, const int c1, const Complex_int16* B, Complex_int16* C) {
+    if(r1 == 16) {
         __m256i realResult = _mm256_set1_epi64x(0); // zero out accumulators
         __m256i imagResult = _mm256_set1_epi64x(0);
         for(int c = 0; c < c1; c++) {
             // FOIL
-            __m256i realCol = columnTo256Vec(A, r, c, r1, c1, REAL);
-            __m256i imagCol = columnTo256Vec(A, r, c, r1, c1, IMAG);
+            __m256i realCol = _mm256_load_si256((const __m256i*)&Areal[c*16]);//columnTo256Vec(A, r, c, r1, c1, REAL);
+            __m256i imagCol = _mm256_load_si256((const __m256i*)&Aimag[c*16]);//columnTo256Vec(A, r, c, r1, c1, IMAG);
             __m256i cReal = _mm256_set1_epi16(B[c].real);
             __m256i cImag = _mm256_set1_epi16(B[c].imag);
 
@@ -174,8 +175,66 @@ void v2matmulAVX512(const Complex_int16* A, const int r1, const int c1, const Co
         int16_t* realArray = (int16_t*)(&realResult);
         int16_t* imagArray = (int16_t*)(&imagResult);
         for(int i = 0; i < 16; i++) {
-            C[i+r] = {realArray[i], imagArray[i]};
+            C[i] = {realArray[i], imagArray[i]};
         } // extract with intrinsics?
+    }
+    else if(r1 == 32 || r1 == 64) {
+        for(int r = 0; r < r1; r+=32) {
+            __m512i realResult = _mm512_set1_epi16(0); // zero out accumulators
+            __m512i imagResult = _mm512_set1_epi16(0);
+            __m512i realResult1 = _mm512_set1_epi16(0); // zero out accumulators
+            __m512i imagResult1 = _mm512_set1_epi16(0);
+            for(int c = 0; c < c1; c++) {
+                // FOIL (two times, once for each 32 Complex numbers)
+                __m512i realCol = _mm512_load_si512((const __m512i*)&Areal[r+c*r1]);//columnTo256Vec(A, r, c, r1, c1, REAL);
+                __m512i imagCol = _mm512_load_si512((const __m512i*)&Aimag[r+c*r1]);//columnTo256Vec(A, r, c, r1, c1, IMAG);
+                __m512i cReal = _mm512_set1_epi16(B[c].real);
+                __m512i cImag = _mm512_set1_epi16(B[c].imag);
+
+                // Get partial real C vector
+                __m512i mul1 = _mm512_mullo_epi16(realCol, cReal);
+                __m512i mul2 = _mm512_mullo_epi16(imagCol, cImag);
+                __m512i partialReal = _mm512_sub_epi16(mul1, mul2);
+
+                // Get partial imag C vector
+                __m512i mul3 = _mm512_mullo_epi16(imagCol, cReal);
+                __m512i mul4 = _mm512_mullo_epi16(realCol, cImag);
+                __m512i partialImag = _mm512_add_epi16(mul3, mul4); 
+
+
+                // Accumulate in result (see if theres a fused instruction for sub-add and add-add)
+                realResult = _mm512_add_epi16(realResult, partialReal);
+                imagResult = _mm512_add_epi16(imagResult, partialImag);
+                // if(c > 32) {
+                //     __m512i realCol1 = _mm512_load_si512((const __m512i*)&Areal[(c*64)+32]);
+                //     __m512i imagCol1 = _mm512_load_si512((const __m512i*)&Aimag[(c*64)+32]);
+                //     __m512i mul11 = _mm512_mullo_epi16(realCol1, cReal);
+                //     __m512i mul22 = _mm512_mullo_epi16(imagCol1, cImag);
+                //     __m512i partialReal1 = _mm512_sub_epi16(mul11, mul22);
+                //     __m512i mul33 = _mm512_mullo_epi16(imagCol1, cReal);
+                //     __m512i mul44 = _mm512_mullo_epi16(realCol1, cImag);
+                //     __m512i partialImag1 = _mm512_add_epi16(mul33, mul44); 
+                //     realResult1 = _mm512_add_epi16(realResult1, partialReal1);
+                //     imagResult1 = _mm512_add_epi16(imagResult1, partialImag1);
+                // }
+            }
+            int16_t* realArray = (int16_t*)(&realResult);
+            int16_t* imagArray = (int16_t*)(&imagResult);
+            for(int i = 0; i < 32; i++) {
+                C[r+i] = {realArray[i], imagArray[i]};
+            } // extract with intrinsics?
+        }
+        
+        
+        // int16_t* realArray1 = (int16_t*)(&realResult1);
+        // int16_t* imagArray1 = (int16_t*)(&imagResult1);
+        // for(int i = 32; i < 64; i++) {
+        //     C[i] = {realArray1[i], imagArray1[i]};
+        // } // extract with intrinsics?
+    }
+    else {
+        std::cerr << "Dimensions not supported" << std::endl;
+        exit(1);
     }
 }
 #endif
