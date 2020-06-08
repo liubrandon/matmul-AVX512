@@ -224,25 +224,23 @@ struct Dim {
 
 #define NTESTS 7
 Dim testDims[NTESTS] = {{64,64},{64,16},{16,64},{64,8},{8,64},{16,16},{8,8}};
-#define DEFAULT_ITER 1000000
+#define DEFAULT_ITER 10000
 // Initialize test matrices and run benchmarks using my code vs Armadillo's library
 void runBenchmarks(int numIter = DEFAULT_ITER) {
     double armaTime, vclTime, rowMajorTime, colMajorTime, floatcolMajorTime;
     armaTime = vclTime = rowMajorTime = colMajorTime = floatcolMajorTime = 0.0;
     std::vector<double> armaTimes, vclTimes, colMajorTimes, floatcolMajorTimes, rowMajorTimes;
-    for(int i = 64; i > 0; i-=1) {
-        int nrows = 64;
+    for(int i = 500; i > 0; i-=1000) {
+        int nrows = i;
         int ncols = i;
         int mod = 6;
         Complex_int16 A[nrows * ncols] __attribute__((aligned(64))); // What to align it to?
         Complex_int16 B[ncols] __attribute__((aligned(64)));         // B is a vector
-        Complex_int16 C[nrows] __attribute__((aligned(64)));         // C is the resulting vector
-        
+        Complex_int16 C[nrows] __attribute__((aligned(64)));         // C is the resulting vector        
         // Initialize matrices for AVX
         generateMatrix(A, nrows * ncols, mod);
         generateMatrix(B, ncols, mod);
         generateMatrix(C, nrows, 0); // initialize C to all 0s
-        
         // Initialize matrices for Armadillo (Copy from A, B, C)
         arma::cx_fmat armaA = int16MatrixToArma(A, nrows, ncols);
         arma::cx_fmat armaB = int16MatrixToArma(B, ncols, 1);
@@ -266,7 +264,7 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
         armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
         //rowMajorTime = runRowMajorBenchmark(A, nrows, ncols, B, rowC, numIter);
         colMajorTime = runColMajorBenchmark(A, nrows, ncols, B, colC, numIter);
-        floatcolMajorTime = runFloatColMajorBenchmark(floatA, nrows, ncols, floatB, floatC, numIter);
+        //floatcolMajorTime = runFloatColMajorBenchmark(floatA, nrows, ncols, floatB, floatC, numIter);
         vclTimes.push_back(vclTime);
         armaTimes.push_back(armaTime);
         colMajorTimes.push_back(colMajorTime);
@@ -275,7 +273,7 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
 
         // Assert the resulting matrices are the same
         // assert(matricesEqual(C, armaC));
-        assert(matricesEqual(floatC, armaC));
+        // assert(matricesEqual(floatC, armaC));
         assert(matricesEqual(colC, armaC));
         // assert(matricesEqual(rowC, armaC));
 
@@ -283,19 +281,19 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
         // double avgVCL = vclTime / (double)numIter;
         double avgArma = armaTime / (double)numIter;
         double avgColMajor = colMajorTime / (double)numIter;
-        double avgFloatColMajor = floatcolMajorTime / (double)numIter;
+        // double avgFloatColMajor = floatcolMajorTime / (double)numIter;
         // double avgRowMajor = rowMajorTime / (double)numIter;
 
         printf("Dimensions:          (%u x %u) * (%u x 1)\n", nrows, ncols, ncols);
         printf("Linear precoding benchmark s' = Ws executed %d times.\n", numIter);
         printf("single float (MKL/Arma): %7.3f µs per iteration\n\n", avgArma);
 
-        printf("float/col maj (AVX512): %7.3f µs per iteration\n", avgFloatColMajor);
-        printf("%2.2fx MKL/Armadillo float matrix * vector\n\n", avgArma / avgFloatColMajor);
+        // printf("float/col maj (AVX512): %7.3f µs per iteration\n", avgFloatColMajor);
+        // printf("%2.2fx MKL/Armadillo float matrix * vector\n\n", avgArma / avgFloatColMajor);
 
         printf("int16/col maj (AVX512): %7.3f µs per iteration\n", avgColMajor);
         printf("%2.2fx MKL/Armadillo float matrix * vector\n", avgArma / avgColMajor);
-        printf("%2.2fx my AVX512 float matrix * vector\n\n", avgFloatColMajor / avgColMajor);
+        // printf("%2.2fx my AVX512 float matrix * vector\n\n", avgFloatColMajor / avgColMajor);
 
         // printf("int16/row maj (AVX512): %7.3f µs per iteration\n", avgRowMajor);
         // printf("%2.2fx MKL/Armadillo float matrix * vector\n\n", avgArma / avgRowMajor);
