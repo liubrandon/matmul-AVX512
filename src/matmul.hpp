@@ -18,6 +18,75 @@
 #include "vectorclass.h"
 #include "complexvec1.h"
 
+void matmulAVXFloat_colmajor(const float* Areal, const float* Aimag, const int r1, const int c1, const Complex_float* B, Complex_float* C) {
+    if(r1 == 16) {
+        __m512 realResult = _mm512_set1_ps(0); // zero out accumulators
+        __m512 imagResult = _mm512_set1_ps(0);
+        for(int c = 0; c < c1; c++) {
+            // FOIL
+            __m512 realCol = _mm512_load_ps((const __m512*)&Areal[c*16]);//columnTo256Vec(A, r, c, r1, c1, REAL);
+            __m512 imagCol = _mm512_load_ps((const __m512*)&Aimag[c*16]);//columnTo256Vec(A, r, c, r1, c1, IMAG);
+            __m512 cReal = _mm512_set1_ps(B[c].real);
+            __m512 cImag = _mm512_set1_ps(B[c].imag);
+
+            // Get partial real C vector
+            __m512 mul1 = _mm512_mul_ps(realCol, cReal);
+            __m512 mul2 = _mm512_mul_ps(imagCol, cImag);
+            __m512 partialReal = _mm512_sub_ps(mul1, mul2);
+
+            // Get partial imag C vector
+            __m512 mul3 = _mm512_mul_ps(imagCol, cReal);
+            __m512 mul4 = _mm512_mul_ps(realCol, cImag);
+            __m512 partialImag = _mm512_add_ps(mul3, mul4); 
+
+            // Accumulate in result (see if theres a fused instruction for sub-add and add-add)
+            realResult = _mm512_add_ps(realResult, partialReal);
+            imagResult = _mm512_add_ps(imagResult, partialImag);
+        }
+        float* realArray = (float*)(&realResult);
+        float* imagArray = (float*)(&imagResult);
+        for(int i = 0; i < 16; i++) {
+            C[i] = {realArray[i], imagArray[i]};
+        } // extract with intrinsics?
+    }
+    else if(r1 == 32 || r1 == 64) {
+        for(int r = 0; r < r1; r+=16) {
+            __m512 realResult = _mm512_set1_ps(0); // zero out accumulators
+            __m512 imagResult = _mm512_set1_ps(0);
+            for(int c = 0; c < c1; c++) {
+                // FOIL
+                __m512 realCol = _mm512_load_ps((const __m512*)&Areal[r+c*r1]);
+                __m512 imagCol = _mm512_load_ps((const __m512*)&Aimag[r+c*r1]);
+                __m512 cReal = _mm512_set1_ps(B[c].real);
+                __m512 cImag = _mm512_set1_ps(B[c].imag);
+
+                // Get partial real C vector
+                __m512 mul1 = _mm512_mul_ps(realCol, cReal);
+                __m512 mul2 = _mm512_mul_ps(imagCol, cImag);
+                __m512 partialReal = _mm512_sub_ps(mul1, mul2);
+
+                // Get partial imag C vector
+                __m512 mul3 = _mm512_mul_ps(imagCol, cReal);
+                __m512 mul4 = _mm512_mul_ps(realCol, cImag);
+                __m512 partialImag = _mm512_add_ps(mul3, mul4); 
+
+                // Accumulate in result (see if theres a fused instruction for sub-add and add-add)
+                realResult = _mm512_add_ps(realResult, partialReal);
+                imagResult = _mm512_add_ps(imagResult, partialImag);
+            }
+            float* realArray = (float*)(&realResult);
+            float* imagArray = (float*)(&imagResult);
+            for(int i = 0; i < 16; i++) {
+                C[r+i] = {realArray[i], imagArray[i]};
+            } // extract with intrinsics?
+        }
+    }
+    else {
+        std::cerr << "Dimensions not supported" << std::endl;
+        exit(1);
+    }
+}
+
 static inline void matmulVCL(const Complex_float* A, int r1, int c1, const Complex_float* B, Complex_float* C) {
     static const Complex8f bSlice1 = *(Complex8f*)(B+(0*8));
     static const Complex8f bSlice2 = *(Complex8f*)(B+(1*8));
@@ -70,83 +139,9 @@ static inline void matmulVCL(const Complex_float* A, int r1, int c1, const Compl
             C += 1;
         }
     }
-} 
-
-// Complex matrix multiplication C = AB
-// where A has dimensions r1 x c1, B has dimensions c1 x 1 (B is a vector)
-void matmulAVX512(const Complex_int16* A, const int r1, const int c1, const Complex_int16* B, Complex_int16* C) {
-    static const __m512i bSlice[4] = {
-        _mm512_loadu_si512((const void*)(0+B)),
-        _mm512_loadu_si512((const void*)(16+B)),
-        _mm512_loadu_si512((const void*)(32+B)),
-        _mm512_loadu_si512((const void*)(48+B)),
-    };
-    int cIdx = 0;
-    Complex_int16 tempC[64] __attribute__((aligned(64)));
-    memset((void*)tempC, 0, 64*sizeof(tempC[0]));
-    if(c1 == 8) {
-        for(int i = 0; i < r1 * c1; i += 8, cIdx++) { // treat i as the index of the Complex value inside A where A is row major
-            const Complex_int16 dp = hsum8x32(_mm256_myComplexMult_epi16(_mm256_loadu_si256((const __m256i_u*)(A + i)), _mm256_loadu_si256((const __m256i_u*)B)));
-            tempC[cIdx] = dp;
-        }
-    }
-    else if(c1 == 16) { // Calculating dot product only needs one __m512i vector
-        for(int i = 0; i < r1 * c1; i += 16, cIdx++) { // treat i as the index of the Complex value inside A where A is row major
-            const Complex_int16 dp = dotProduct16x32(_mm512_loadu_si512((const void*)(A + i)), bSlice[0]);
-            tempC[cIdx] = dp;
-        }
-    }
-    else if(c1 == 32) {
-        for(int i = 0; i < r1 * c1; i += 32, cIdx++) { // treat i as the index of the Complex value inside A where A is row major
-            const Complex_int16 dp = dotProduct16x32(_mm512_loadu_si512((const void*)(A + i)), bSlice[0])
-                                   + dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 16)), bSlice[1]);
-            tempC[cIdx] = dp;
-        }
-    }
-    else if (c1 == 64) { // Calculating dot product needs 4 __m512i
-        // Option B: Move down columns (slower?)
-        // Code to reuse bSlices to the maximum  
-        // int bIdx = 0;
-        // for(int c = 0; c < c1; c += 16, bIdx++, cIdx=0) { // c is the column offset, 512 bit wide stride
-        //     for(int r = 0; r < r1*c1; r+=64, cIdx++) {
-        //         // Reuse slice of B for each row (maximum number of reuses)
-        //         //print_m512i(_mm512_loadu_si512((const void*)(A + r + c)));
-        //         tempC[cIdx] = tempC[cIdx] + dotProduct16x32(_mm512_loadu_si512((const void*)(A + r + c)), bSlice[bIdx]);
-        //     }
-        //     //printMatrix(tempC, 16, 1);
-        //     //return;
-        // }
-        
-        for (int i = 0; i < r1 * c1; i += 64, cIdx += 1) { // TODO: Change to properly block the matrices for cache locality
-            // Option C: SIMD sum moving across rows
-            // Complex_int16 dpArr[4] = {dotProduct16x32(_mm512_loadu_si512((const void*)(A + i)), bSlice[0]),
-            //                          dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 16)), bSlice[1]),
-            //                          dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 32)), bSlice[2]),
-            //                          dotProduct16x32(_mm512_loadu_si512((const void*)(A + i + 48)), bSlice[3])};
-            // __m128i all4 = _mm_loadu_si128((const __m128i_u*)dpArr);
-            // __m128i idx = _mm_setr_epi16(4,5,6,7,0,1,2,3); // to swap front 4 and back 4
-            // __m128i sum1of2 = _mm_add_epi16(_mm_permutexvar_epi16(idx, all4), all4);
-            // __m128i idx1 = _mm_setr_epi16(2,3,0,1,0,0,0,0); // to swap front 2 and back 2
-            // __m128i sum2of2 = _mm_add_epi16(_mm_permutexvar_epi16(idx1, sum1of2), sum1of2);
-            // const Complex_int16 dp = {static_cast<int16_t>(_mm_cvtsi128_si32(sum2of2)),
-            //                           static_cast<int16_t>(_mm_extract_epi16(sum2of2, 1))};
-            // end SIMD sum (slower?)
-
-            // Option A: move across rows
-            const Complex_int16 dp = dotProduct16x32(_mm512_loadu_si512((const void*)(&A[i])), bSlice[0])
-                                    + dotProduct16x32(_mm512_loadu_si512((const void*)(&A[i + 16])), bSlice[1])
-                                    + dotProduct16x32(_mm512_loadu_si512((const void*)(&A[i + 32])), bSlice[2])
-                                    + dotProduct16x32(_mm512_loadu_si512((const void*)(&A[i + 48])), bSlice[3]);
-            tempC[cIdx] = dp;
-        }
-    }
-    // Store tempC into C
-    for(int r = 0; r < r1; r+=16) {
-        _mm512_storeu_si512((void*)(&C[r]), _mm512_loadu_si512((const void*)(&tempC[r])));
-    }
 }
 
-// pass in real and imag matrices where r1 x c1 is the size of Areal
+// pass in real and imag matrices where r1 x c1 is the size of Areal and real and imag are stored column major
 void matmulAVX512_colmajor(const int16_t* Areal, const int16_t* Aimag, const int r1, const int c1, const Complex_int16* B, Complex_int16* C) {
     if(r1 == 16) {
         __m256i realResult = _mm256_set1_epi64x(0); // zero out accumulators
@@ -182,8 +177,6 @@ void matmulAVX512_colmajor(const int16_t* Areal, const int16_t* Aimag, const int
         for(int r = 0; r < r1; r+=32) {
             __m512i realResult = _mm512_set1_epi16(0); // zero out accumulators
             __m512i imagResult = _mm512_set1_epi16(0);
-            __m512i realResult1 = _mm512_set1_epi16(0); // zero out accumulators
-            __m512i imagResult1 = _mm512_set1_epi16(0);
             for(int c = 0; c < c1; c++) {
                 // FOIL (two times, once for each 32 Complex numbers)
                 __m512i realCol = _mm512_load_si512((const __m512i*)&Areal[r+c*r1]);//columnTo256Vec(A, r, c, r1, c1, REAL);
@@ -205,18 +198,6 @@ void matmulAVX512_colmajor(const int16_t* Areal, const int16_t* Aimag, const int
                 // Accumulate in result (see if theres a fused instruction for sub-add and add-add)
                 realResult = _mm512_add_epi16(realResult, partialReal);
                 imagResult = _mm512_add_epi16(imagResult, partialImag);
-                // if(c > 32) {
-                //     __m512i realCol1 = _mm512_load_si512((const __m512i*)&Areal[(c*64)+32]);
-                //     __m512i imagCol1 = _mm512_load_si512((const __m512i*)&Aimag[(c*64)+32]);
-                //     __m512i mul11 = _mm512_mullo_epi16(realCol1, cReal);
-                //     __m512i mul22 = _mm512_mullo_epi16(imagCol1, cImag);
-                //     __m512i partialReal1 = _mm512_sub_epi16(mul11, mul22);
-                //     __m512i mul33 = _mm512_mullo_epi16(imagCol1, cReal);
-                //     __m512i mul44 = _mm512_mullo_epi16(realCol1, cImag);
-                //     __m512i partialImag1 = _mm512_add_epi16(mul33, mul44); 
-                //     realResult1 = _mm512_add_epi16(realResult1, partialReal1);
-                //     imagResult1 = _mm512_add_epi16(imagResult1, partialImag1);
-                // }
             }
             int16_t* realArray = (int16_t*)(&realResult);
             int16_t* imagArray = (int16_t*)(&imagResult);
@@ -224,17 +205,103 @@ void matmulAVX512_colmajor(const int16_t* Areal, const int16_t* Aimag, const int
                 C[r+i] = {realArray[i], imagArray[i]};
             } // extract with intrinsics?
         }
-        
-        
-        // int16_t* realArray1 = (int16_t*)(&realResult1);
-        // int16_t* imagArray1 = (int16_t*)(&imagResult1);
-        // for(int i = 32; i < 64; i++) {
-        //     C[i] = {realArray1[i], imagArray1[i]};
-        // } // extract with intrinsics?
     }
     else {
         std::cerr << "Dimensions not supported" << std::endl;
         exit(1);
+    }
+}
+
+// Areal and Aimag are the r1 x c1 real and imag component matrices stored in row major order
+static inline void matmulAVX512_rowmajor(const int16_t* Areal, const int16_t* Aimag, const int r1, const int c1, const int16_t* Breal, const int16_t* Bimag, Complex_int16* C) {
+    Complex_int16 tempC[64] __attribute__((aligned(64)));
+    memset((void*)tempC, 0, 64*sizeof(tempC[0]));
+    int cIdx = 0;
+    int bIdx = 0;
+    // (a+bi)*(c+di) = [ac-bd] + [bc+ad]i
+    if(c1 == 16) { // One __m512i vector can hold exactly 32 int16_t
+        for(int r = 0; r < r1*c1; r+=16, cIdx++) {
+            __m256i a,b,c,d;
+            a = _mm256_load_si256((const __m256i*)(&Areal[r]));
+            b = _mm256_load_si256((const __m256i*)(&Aimag[r]));
+            c = _mm256_load_si256((const __m256i*)(Breal));
+            d = _mm256_load_si256((const __m256i*)(Bimag));
+            __m256i ac,bd,bc,ad;
+            ac = _mm256_mullo_epi16(a,c);
+            bd = _mm256_mullo_epi16(b,d);
+            bc = _mm256_mullo_epi16(b,c);
+            ad = _mm256_mullo_epi16(a,d);
+            __m256i real,complex; // real=ac-bd, complex=bc+ad
+            real = _mm256_sub_epi16(ac,bd);
+            complex = _mm256_add_epi16(bc,ad);
+            int16_t realDot = int_hsum8x32(real); // I wrote this function based on the int32 version
+            int16_t complexDot = int_hsum8x32(complex);
+            Complex_int16 dot = {realDot, complexDot};
+            tempC[cIdx] = dot;
+        }
+    }
+    else if(c1 == 32) { // One __m512i vector can hold exactly 32 int16_t
+        for(int r = 0; r < r1*c1; r+=32, cIdx++) {
+            __m512i a,b,c,d;
+            a = _mm512_load_si512((const void*)(&Areal[r]));
+            b = _mm512_load_si512((const void*)(&Aimag[r]));
+            c = _mm512_load_si512((const void*)(Breal));
+            d = _mm512_load_si512((const void*)(Bimag));
+            __m512i ac,bd,bc,ad;
+            ac = _mm512_mullo_epi16(a,c);
+            bd = _mm512_mullo_epi16(b,d);
+            bc = _mm512_mullo_epi16(b,c);
+            ad = _mm512_mullo_epi16(a,d);
+            __m512i real,complex; // real=ac-bd, complex=bc+ad
+            real = _mm512_sub_epi16(ac,bd);
+            complex = _mm512_add_epi16(bc,ad);
+            int16_t realDot = _mm512_reduce_add_epi16(real); // I wrote this function based on the int32 version
+            int16_t complexDot = _mm512_reduce_add_epi16(complex);
+            Complex_int16 dot = {realDot, complexDot};
+            tempC[cIdx] = dot;
+        }
+    }
+    else if(c1 == 64) {
+        for(int r = 0; r < r1*c1; r+=64, cIdx++) {
+            __m512i a,b,c,d;
+            a = _mm512_load_si512((const void*)(&Areal[r]));
+            b = _mm512_load_si512((const void*)(&Aimag[r]));
+            c = _mm512_load_si512((const void*)(Breal));
+            d = _mm512_load_si512((const void*)(Bimag));
+            __m512i ac,bd,bc,ad;
+            ac = _mm512_mullo_epi16(a,c);
+            bd = _mm512_mullo_epi16(b,d);
+            bc = _mm512_mullo_epi16(b,c);
+            ad = _mm512_mullo_epi16(a,d);
+            __m512i real,complex; // real=ac-bd, complex=bc+ad
+            real = _mm512_sub_epi16(ac,bd);
+            complex = _mm512_add_epi16(bc,ad);
+            int16_t realDot = _mm512_reduce_add_epi16(real); // I wrote this function based on the int32 version
+            int16_t complexDot = _mm512_reduce_add_epi16(complex);
+            Complex_int16 dot = {realDot, complexDot};
+
+            __m512i a1,b1,c1,d1;
+            a1 = _mm512_load_si512((const void*)(&Areal[r+32]));
+            b1 = _mm512_load_si512((const void*)(&Aimag[r+32]));
+            c1 = _mm512_load_si512((const void*)(&Breal[32]));
+            d1 = _mm512_load_si512((const void*)(&Bimag[32]));
+            __m512i ac1,bd1,bc1,ad1;
+            ac1 = _mm512_mullo_epi16(a1,c1);
+            bd1 = _mm512_mullo_epi16(b1,d1);
+            bc1 = _mm512_mullo_epi16(b1,c1);
+            ad1 = _mm512_mullo_epi16(a1,d1);
+            __m512i real1,complex1; // real=ac1-bd1, complex=bc1+ad1
+            real1 = _mm512_sub_epi16(ac1,bd1);
+            complex1 = _mm512_add_epi16(bc1,ad1);
+            int16_t realDot1 = _mm512_reduce_add_epi16(real1); // I wrote this function based on the int32 version
+            int16_t complexDot1 = _mm512_reduce_add_epi16(complex1);
+            Complex_int16 dot1 = {realDot1, complexDot1};
+
+            tempC[cIdx] = dot + dot1;
+        }
+    }
+    for(int r = 0; r < r1; r+=16) {
+        _mm512_storeu_si512((void*)(&C[r]), _mm512_loadu_si512((const void*)(&tempC[r])));
     }
 }
 #endif

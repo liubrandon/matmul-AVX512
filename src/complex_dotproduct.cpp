@@ -50,18 +50,3 @@ void print_m512(__m512 v) {
 }
 
 
-// // a dot b, where a and b are vectors with 16 elements, each a 32 bit complex number {int16 real, int16 imag}
-// Complex_int16 old_dotProduct16x32(__m512i a, __m512i b) {
-//     // Split a and b into front and back halves
-//     __m256i aFront = _mm512_castsi512_si256(a);
-//     __m256i aBack = _mm512_extracti64x4_epi64(a, 1);
-//     __m256i bFront = _mm512_castsi512_si256(b);
-//     __m256i bBack = _mm512_extracti64x4_epi64(b, 1);
-//     // (aFront dot bFront) + (aBack dot bBack) is the same as a dot b
-//     __m256i frontMul = _mm256_myComplexMult_epi16(aFront, bFront);
-//     __m256i backMul = _mm256_myComplexMult_epi16(aBack, bBack);
-//     return (hsum8x32(frontMul) + hsum8x32(backMul));
-// }
-
-
-

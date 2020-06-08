@@ -9,11 +9,7 @@ static int showUsage(char *prog) {
     return 1;
 }
 
-
-
 int main(int argc, char **argv) {
-    // newBench();
-    // return 0;
     if (argc == 1) {
         runBenchmarks();
     }

@@ -33,6 +33,33 @@ struct Complex_int16 {
     }
 };
 
+// Sums the 4 Complex numbers packed into v
+static inline int16_t int_hsum4x32(__m128i v) {
+    //    (c1  c2  c3 c4) is v 
+    // +  (c3  c4   0  0) is _mm_permutexvar_epi16(_mm_setr_epi16(4,5,6,7,0,0,0,0))
+    //  ------------------
+    //    (c5  c6  c3 c4) c5 and c6 are the resulting complex numbers (last two values here are ignored)
+    __m128i r1 = _mm_add_epi16(v, _mm_permutexvar_epi16(_mm_setr_epi16(4,5,6,7,0,0,0,0), v));
+    // now, do c5 + c6 = res
+    // c5 and c6 are complex so we can parallelize the two additions
+    // c5 is the first two elements of __m128i r1
+    // the below statement moves c6 to be the first two elements of __m128i r2
+    __m128i r2 = _mm_setr_epi16(_mm_extract_epi16(r1, 2),_mm_extract_epi16(r1, 3),0,0,0,0,0,0);
+    // Now we can add the real and imaginary compenents in parallel
+    __m128i res = _mm_add_epi16(r1, r2);
+    int16_t real = _mm_cvtsi128_si32(res); // extract first e
+    int16_t imag = _mm_extract_epi16(res, 1);
+    return real+imag;
+}
+
+// Sums the low half with the high half of v to reduce into __m128i
+static inline int16_t int_hsum8x32(__m256i v) {
+    __m128i sum128 = _mm_add_epi16( 
+        _mm256_castsi256_si128(v), // low half
+        _mm256_extracti128_si256(v, 1)); // high half
+    return int_hsum4x32(sum128);
+}
+
 // Functions to print Intel vector types to help with debugging 
 void print_m512i(__m512i v);
 void print_m256i(__m256i v, int mode);
@@ -44,7 +71,7 @@ void print_m512(__m512 v);
 // below adapted from avx512fintrin.h
 typedef short __v8hi __attribute__ ((__vector_size__ (16)));
 #define __DEFAULT_FN_ATTRS512 __attribute__((__always_inline__, __nodebug__, __target__("avx512f"), __min_vector_width__(512)))
-#define _mm512_my_mask_reduce_operator(op) \
+#define _mm512_my_mask_reduce_operator_complex(op) \
   __v16hi __t1 = (__v16hi)_mm512_extracti64x4_epi64(__W, 0); \
   __v16hi __t2 = (__v16hi)_mm512_extracti64x4_epi64(__W, 1); \
   __m256i __t3 = (__m256i)(__t1 op __t2); \
@@ -62,18 +89,31 @@ typedef short __v8hi __attribute__ ((__vector_size__ (16)));
   Complex_int16 result = {real, imag}; \
   return result;
 
-static Complex_int16 _mm512_reduce_add_epi16(__m512i __W) {
-  _mm512_my_mask_reduce_operator(+);
+static Complex_int16 _mm512_reduce_add_epi16_complex(__m512i __W) {
+  _mm512_my_mask_reduce_operator_complex(+);
 }
 
-// // VCL implementation for single precision float
-// static inline __m512 _mm512_myComplexMult_ps(__m512 a, __m512 b) {
-//     __m512 b_flip = _mm512_shuffle_ps(b,b,0xB1);   // Swap b.re and b.im
-//     __m512 a_im   = _mm512_shuffle_ps(a,a,0xF5);   // Imag part of a in both
-//     __m512 a_re   = _mm512_shuffle_ps(a,a,0xA0);   // Real part of a in both
-//     __m512 aib    = _mm512_mul_ps(a_im, b_flip);   // (a.im*b.im, a.im*b.re)
-//     return _mm512_fmaddsub_ps(a_re, b, aib);   // a_re * b +/- aib
-// }
+// Try using the __v8hi type instead of __m256i etc to match avx512fintrin
+#define _mm512_my_mask_reduce_operator(op) \
+  __v16hi __t1 = (__v16hi)_mm512_extracti64x4_epi64(__W, 0); \
+  __v16hi __t2 = (__v16hi)_mm512_extracti64x4_epi64(__W, 1); \
+  __m256i __t3 = (__m256i)(__t1 op __t2); \
+  __m128i __t4 = _mm256_extracti128_si256(__t3, 0); \
+  __m128i __t5 = _mm256_extracti128_si256(__t3, 1); \
+  __m128i __t6 = _mm_add_epi16(__t4, __t5); \
+  __m128i idx = _mm_setr_epi16(4,5,6,7,0,1,2,3);\
+  __m128i __t7 = _mm_permutexvar_epi16(idx, __t6); \
+  __m128i __t8 = _mm_add_epi16(__t6, __t7); \
+  __m128i idx1 = _mm_setr_epi16(2,3,0,1,4,5,6,7);\
+  __m128i __t9 = _mm_permutexvar_epi16(idx1, __t8); \
+  __m128i __t10 = _mm_add_epi16(__t8, __t9); \
+  int16_t a = _mm_cvtsi128_si32(__t10); \
+  int16_t b = _mm_extract_epi16(__t10, 1); \
+  return (a op b);
+
+static int16_t _mm512_reduce_add_epi16(__m512i __W) {
+  _mm512_my_mask_reduce_operator(+);
+}
 
 static const int16_t temp0[32] = {1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14, 17, 16, 19, 18, 21, 20, 23, 22, 25, 24, 27, 26, 29, 28, 31, 30};
 static const int16_t temp1[32] = {1, 1, 3, 3, 5, 5, 7, 7, 9, 9, 11, 11, 13, 13, 15, 15, 17, 17, 19, 19, 21, 21, 23, 23, 25, 25, 27, 27, 29, 29, 31, 31};
@@ -96,7 +136,7 @@ static __m512i _mm512_myComplexMult_epi16(__m512i a, __m512i b) {
 }
 // a dot b, where a and b are vectors with 16 elements, each a 32 bit complex number {int16 real, int16 imag}
 static inline Complex_int16 dotProduct16x32(__m512i a, __m512i b) {
-    return _mm512_reduce_add_epi16(_mm512_myComplexMult_epi16(a, b));
+    return _mm512_reduce_add_epi16_complex(_mm512_myComplexMult_epi16(a, b));
 }
 
 #define REAL 0
