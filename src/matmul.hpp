@@ -170,20 +170,53 @@ static inline void matmulAVX512_colmajor(const int16_t* Areal, const int16_t* Ai
         } // extract with intrinsics?
         row+=8;
     }
-    // less than 8 rows left so get those dot products sequentially
-    for(int i = 0; i < nrows-row; i++) {
+    int rowsLeft = nrows-row;
+    if(rowsLeft == 1) {
+        // perform one final row sequentially
         Complex_int16 dotResult = {0,0};
         for(int j = 0; j < ncols; j++) {
             // FOIL: (a+bi)*(c+di) = [ac-bd] + [bc+ad]i
-            int16_t a = Areal[j*nrows+row+i];
-            int16_t b = Aimag[j*nrows+row+i];
+            int16_t a = Areal[j*nrows+row];
+            int16_t b = Aimag[j*nrows+row];
             int16_t c = B[j].real;
             int16_t d = B[j].imag;
             Complex_int16 partialDot = {static_cast<int16_t>(a*c-b*d), static_cast<int16_t>(b*c+a*d)};
             dotResult = dotResult + partialDot;
         }
-        C[row+i] = dotResult;
+        C[row] = dotResult;
     }
+    else { // perform more than one final row with SIMD
+        row = nrows-8;
+        __m128i realResult = _mm_set1_epi64x(0); // zero out accumulators
+        __m128i imagResult = _mm_set1_epi64x(0);
+        for(int col = 0; col < ncols; col++) {
+            // FOIL
+            __m128i a = _mm_loadu_si128((const __m128i*)&Areal[col*nrows+row]);
+            __m128i b = _mm_loadu_si128((const __m128i*)&Aimag[col*nrows+row]);
+            __m128i c = _mm_set1_epi16(B[col].real);
+            __m128i d = _mm_set1_epi16(B[col].imag);
+
+            // Get partial real C vector
+            __m128i ac = _mm_mullo_epi16(a, c);
+            __m128i bd = _mm_mullo_epi16(b, d);
+            __m128i partialReal = _mm_sub_epi16(ac, bd);
+
+            // Get partial imag C vector
+            __m128i bc = _mm_mullo_epi16(b, c);
+            __m128i ad = _mm_mullo_epi16(a, d);
+            __m128i partialImag = _mm_add_epi16(bc, ad); 
+
+            // Accumulate in result (see if theres a fused instruction for sub-add and add-add)
+            realResult = _mm_add_epi16(realResult, partialReal);
+            imagResult = _mm_add_epi16(imagResult, partialImag);
+        }
+        int16_t* realArray = (int16_t*)(&realResult);
+        int16_t* imagArray = (int16_t*)(&imagResult);
+        for(int i = 8-rowsLeft; i < 8; i++) {
+            C[row+i] = {realArray[i], imagArray[i]};
+        } // extract with intrinsics?
+    }
+    
 }
 
 static inline void matmulAVXFloat_colmajor(const float* Areal, const float* Aimag, const int nrows, const int ncols, const Complex_float* B, Complex_float* C) {

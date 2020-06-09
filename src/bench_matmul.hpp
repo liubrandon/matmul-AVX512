@@ -222,18 +222,18 @@ struct Dim {
     int ncols;
 };
 
-#define NTESTS 7
-Dim testDims[NTESTS] = {{64,64},{64,16},{16,64},{64,8},{8,64},{16,16},{8,8}};
-#define DEFAULT_ITER 10000
+#define NTESTS 2
+Dim testDims[NTESTS] = {{64,16},{16,64}};
+#define DEFAULT_ITER 1000000
 // Initialize test matrices and run benchmarks using my code vs Armadillo's library
 void runBenchmarks(int numIter = DEFAULT_ITER) {
     double armaTime, vclTime, rowMajorTime, colMajorTime, floatcolMajorTime;
     armaTime = vclTime = rowMajorTime = colMajorTime = floatcolMajorTime = 0.0;
     std::vector<double> armaTimes, vclTimes, colMajorTimes, floatcolMajorTimes, rowMajorTimes;
-    for(int i = 500; i > 0; i-=1000) {
+    for(int i = 64; i > 0; i--) {
         int nrows = i;
         int ncols = i;
-        int mod = 6;
+        int mod = 50;
         Complex_int16 A[nrows * ncols] __attribute__((aligned(64))); // What to align it to?
         Complex_int16 B[ncols] __attribute__((aligned(64)));         // B is a vector
         Complex_int16 C[nrows] __attribute__((aligned(64)));         // C is the resulting vector        
