@@ -5,6 +5,7 @@
 #include "complex_dotproduct.hpp"
 #include "timer.hpp"
 #include "bench_dot.hpp"
+#include "deinterleave.hpp"
 // Standard libraries
 #include <cstdio>
 #include <iostream>
@@ -89,7 +90,7 @@ void generateMatrix(Complex* mat, int size, int mod = 30) {
     Complex_int16 zero = {0, 0};
     for (int i = 0; i < size; i++) {
         int16_t ri = static_cast<int16_t>((i % (mod+1)) + 1);
-        Complex_int16 num = {static_cast<int16_t>(ri+1), ri};
+        Complex_int16 num = {1, 0};//{static_cast<int16_t>(ri+1), ri};
         mat[i] = mod ? num : zero;
     }
 }
@@ -161,7 +162,7 @@ double runFloatColMajorBenchmark(const Complex_float* A, int r1, int c1, const C
     return timeSince(start);
 
 }
-double runColMajorBenchmark(const Complex_int16* A, int r1, int c1, const Complex_int16* B, Complex_int16* C, int numIter) {
+double runColMajorBenchmark(const Complex_int16* A, int r1, int c1, const Complex_int16* B, Complex_int16* C, int numIter, double* deinterleaveTime) {
     // seperate A into real and imag and transpose to make column major
     Complex_int16 Atrans[r1*c1] __attribute__((aligned(64)));
     for(int i = 0; i < r1; i++) {
@@ -171,12 +172,16 @@ double runColMajorBenchmark(const Complex_int16* A, int r1, int c1, const Comple
     }
     int16_t Areal[r1*c1] __attribute__((aligned(64)));
     int16_t Aimag[r1*c1] __attribute__((aligned(64)));
-    for(int i = 0; i < r1; i++) {
-        for(int j = 0; j < c1; j++) {
-            Areal[i*c1+j] = Atrans[i*c1+j].real;
-            Aimag[i*c1+j] = Atrans[i*c1+j].imag;
+    double deinterleaveStart = getTime();
+    for(int iter = 0; iter < numIter; iter++) {
+        for(int i = 0; i < r1; i++) {
+            for(int j = 0; j < c1; j++) {
+                Areal[i*c1+j] = Atrans[i*c1+j].real;
+                Aimag[i*c1+j] = Atrans[i*c1+j].imag;
+            }
         }
     }
+    *deinterleaveTime = timeSince(deinterleaveStart);
     double start = getTime();
     for (int i = 0; i < numIter; i++) {
         matmulAVX512_colmajor(Areal, Aimag, r1, c1, B, C);
@@ -229,18 +234,25 @@ Dim testDims[NTESTS] = {{64,16},{16,64}};
 void runBenchmarks(int numIter = DEFAULT_ITER) {
     double armaTime, vclTime, rowMajorTime, colMajorTime, floatcolMajorTime;
     armaTime = vclTime = rowMajorTime = colMajorTime = floatcolMajorTime = 0.0;
-    std::vector<double> armaTimes, vclTimes, colMajorTimes, floatcolMajorTimes, rowMajorTimes;
+    std::vector<double> armaTimes, vclTimes, colMajorTimes, floatcolMajorTimes, rowMajorTimes, deTimes;
     for(int i = 64; i > 0; i--) {
         int nrows = i;
         int ncols = i;
         int mod = 50;
-        Complex_int16 A[nrows * ncols] __attribute__((aligned(64))); // What to align it to?
+        Complex_int16 A[nrows * ncols] __attribute__((aligned(64))); 
         Complex_int16 B[ncols] __attribute__((aligned(64)));         // B is a vector
         Complex_int16 C[nrows] __attribute__((aligned(64)));         // C is the resulting vector        
         // Initialize matrices for AVX
         generateMatrix(A, nrows * ncols, mod);
         generateMatrix(B, ncols, mod);
         generateMatrix(C, nrows, 0); // initialize C to all 0s
+
+        // printMatrix(A, nrows, ncols);
+        // int16_t a_real[nrows * ncols] __attribute__((aligned(64)));
+        // int16_t a_imag[nrows * ncols] __attribute__((aligned(64)));
+        // deinterleaveMatrix(A, nrows*ncols, a_real, a_imag);
+        // return;
+
         // Initialize matrices for Armadillo (Copy from A, B, C)
         arma::cx_fmat armaA = int16MatrixToArma(A, nrows, ncols);
         arma::cx_fmat armaB = int16MatrixToArma(B, ncols, 1);
@@ -260,17 +272,19 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
         Complex_int16 rowC[nrows] __attribute__((aligned(64)));
         generateMatrix(rowC, nrows, 0); // initialize C to all 0s
 
+        double deinterleaveTime;
         //vclTime = runVCLBenchmark(floatA, nrows, ncols, floatB, floatC, numIter);
         armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
         //rowMajorTime = runRowMajorBenchmark(A, nrows, ncols, B, rowC, numIter);
-        colMajorTime = runColMajorBenchmark(A, nrows, ncols, B, colC, numIter);
+        colMajorTime = runColMajorBenchmark(A, nrows, ncols, B, colC, numIter, &deinterleaveTime);
+
         //floatcolMajorTime = runFloatColMajorBenchmark(floatA, nrows, ncols, floatB, floatC, numIter);
         vclTimes.push_back(vclTime);
         armaTimes.push_back(armaTime);
         colMajorTimes.push_back(colMajorTime);
         floatcolMajorTimes.push_back(floatcolMajorTime);
         rowMajorTimes.push_back(rowMajorTime);
-
+        deTimes.push_back(deinterleaveTime);
         // Assert the resulting matrices are the same
         // assert(matricesEqual(C, armaC));
         // assert(matricesEqual(floatC, armaC));
@@ -307,6 +321,7 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
     std::cout << "Row-maj int16,"; printVector(rowMajorTimes);
     std::cout << "Col-maj int16,"; printVector(colMajorTimes);
     std::cout << "Col-maj float,"; printVector(floatcolMajorTimes);
+    std::cout << "Col-maj int16 deinterleave,"; printVector(deTimes);
     double totalArmaTime = accumulate(armaTimes.begin(), armaTimes.end(), 0);
     double totalVCLTime = accumulate(vclTimes.begin(), vclTimes.end(), 0);
     double totalColMajorTime = accumulate(colMajorTimes.begin(), colMajorTimes.end(), 0);

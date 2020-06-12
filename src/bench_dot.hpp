@@ -9,6 +9,24 @@
 // Agner Fog's Vector Class Library
 #include "vectorclass.h"
 #include "complexvec1.h"
+// VOLK library
+#include <volk/build/include/volk/volk.h>
+
+// Even using half the size vector VOLK is much much much slower
+static inline double runVolkDotBench(int numIter) {
+    lv_16sc_t res;
+    lv_16sc_t* a = (lv_16sc_t*)volk_malloc(16*sizeof(lv_16sc_t), 64);
+    for(int i = 0; i < 8; i++) {
+        a[i] = {6, 3};
+    }
+    double start = getTime();
+    for(int i = 0; i < numIter; i++) {
+        volk_16ic_x2_dot_prod_16ic(&res, a, a, 8);
+    }
+    std::cout << "Volk result: " << res << std::endl;
+    volk_free(a);
+    return timeSince(start);
+}
 
 // testing complex dot product
 static inline double runArmaDotBench(int numIter) {
@@ -66,17 +84,21 @@ static inline void runDotBenchmarks(int numIter) {
     double avxTime = runMyDotBench(numIter);
     double armaTime = runArmaDotBench(numIter);
     double vclTime = runVCLDotBench(numIter);
-    std::cout << armaTime << ", " << avxTime << ", " << vclTime << std::endl;
+    double volkTime = runVolkDotBench(numIter);
+    std::cout << armaTime << ", " << avxTime << ", " << vclTime << ", " << volkTime << std::endl;
     // Output results
     double avgArma = armaTime / (double)numIter;
     double avgAVX = avxTime / (double)numIter;
     double avgVCL = vclTime / (double)numIter;
+    double avgVolk = volkTime / (double)numIter;
     printf("Dot product executed %d times.\n", numIter);
     printf("MKL/Armadillo:   %10.6f µs per iteration\n", avgArma);
     printf("Intrinsics   :   %10.6f µs per iteration\n", avgAVX);
     printf("%2.2fx MKL/Arma float dot\n\n", armaTime / avxTime);
     printf("Agner Fog VCL:   %10.6f µs per iteration\n", avgVCL);
     printf("%2.2fx MKL/Arma float dot\n", armaTime / vclTime);
+    printf("Volk library :   %10.6f µs per iteration\n", volkTime);
+    printf("%2.2fx MKL/Arma float dot\n", armaTime / volkTime);
 }
 
 #endif

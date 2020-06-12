@@ -1,7 +1,6 @@
 #include "bench_matmul.hpp"
 #include "bench_dot.hpp"
 #include <cassert>
-
 static int showUsage(char *prog) {
     fprintf(stderr, "Usage: %s [-v] [iterations]\n", prog);
     fprintf(stderr, "   -v: Sets the environmental variable MKL_VERBOSE=1 to see the Intel MKL function calls under the hood.\n");

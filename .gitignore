@@ -46,3 +46,7 @@ src/temp.py
 src/results.txt
 src/latest results.txt
 src/matmul_arb.cpp
+src/experiments/inv
+src/experiments/com
+src/experiments/com_example
+src/experiments/volk
