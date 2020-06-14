@@ -4,7 +4,7 @@
 #include <armadillo>
 #include <eigen3/Eigen/Dense>
 //g++ -Wl,--no-as-needed -O3 -ffast-math -larmadillo -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl inverse.cpp -o inv
-static constexpr size_t kNumIters = 1000;
+static constexpr size_t kNumIters = 10000;
 static constexpr size_t kSize = 64;
 double freq_ghz;
 
@@ -18,19 +18,19 @@ float test_arma_real(const float *_in_mat_arr, InverseMode mode) {
 
   TscTimer timer;
   timer.start();
-  for (size_t iter = 0; iter < kNumIters; iter++) {
+  //for (size_t iter = 0; iter < kNumIters; iter++) {
     if (mode == InverseMode::kPseudoInverse) {
       output = pinv(input);
     } else {
       output = input.i();
     }
     in_mat_arr[0] = out_mat_arr[0];
-  }
+  //}
 
-  timer.stop();
-  printf("Armadillo: Average time for %s of %zux%zu real matrix = %.3f ms\n",
-         mode == InverseMode::kInverse ? "inverse" : "pseudo-inverse", kSize,
-         kSize, timer.avg_usec(freq_ghz) / (1000.0 * kNumIters));
+  // timer.stop();
+  // printf("Armadillo: Average time for %s of %zux%zu real matrix = %.3f ms\n",
+  //        mode == InverseMode::kInverse ? "inverse" : "pseudo-inverse", kSize,
+  //        kSize, timer.avg_usec(freq_ghz) / (1000.0 * kNumIters));
   return accu(output);
 }
 
@@ -44,21 +44,21 @@ float test_eigen_real(const float *_in_mat_arr, InverseMode mode) {
   Eigen::Map<Eigen::Matrix<float, kSize, kSize, Eigen::ColMajor>> output(
       out_mat_arr);
 
-  TscTimer timer;
-  timer.start();
-  for (size_t iter = 0; iter < kNumIters; iter++) {
+  // TscTimer timer;
+  // timer.start();
+  //for (size_t iter = 0; iter < kNumIters; iter++) {
     if (mode == InverseMode::kPseudoInverse) {
       output = input.completeOrthogonalDecomposition().pseudoInverse();
     } else {
       output = input.inverse();
     }
     in_mat_arr[0] = out_mat_arr[0];
-  }
+  //}
 
-  timer.stop();
-  printf("Eigen: Average time for %s of %zux%zu real matrix = %.3f ms\n",
-         mode == InverseMode::kInverse ? "inverse" : "pseudo-inverse", kSize,
-         kSize, timer.avg_usec(freq_ghz) / (1000.0 * kNumIters));
+  // timer.stop();
+  // printf("Eigen: Average time for %s of %zux%zu real matrix = %.3f ms\n",
+  //        mode == InverseMode::kInverse ? "inverse" : "pseudo-inverse", kSize,
+  //        kSize, timer.avg_usec(freq_ghz) / (1000.0 * kNumIters));
   return output.sum();
 }
 
@@ -79,9 +79,9 @@ std::complex<float> test_arma_complex(const float *_in_mat_arr_real, const float
   arma::Mat<arma::cx_float> input_interleaved(input_real, input_imag);
   arma::Mat<arma::cx_float> output_interleaved(output_real, output_imag);
 
-  TscTimer timer;
-  timer.start();
-  for (size_t iter = 0; iter < kNumIters; iter++) {
+  // TscTimer timer;
+  // timer.start();
+  //for (size_t iter = 0; iter < kNumIters; iter++) {
     if (mode == InverseMode::kPseudoInverse) {
 
     } else {
@@ -96,12 +96,12 @@ std::complex<float> test_arma_complex(const float *_in_mat_arr_real, const float
     }
     in_mat_arr_real[0] = out_mat_arr_real[0];
     in_mat_arr_imag[0] = out_mat_arr_imag[0];
-  }
+  //}
 
-  timer.stop();
-  printf("Armadillo: Average time for %s inverse of %zux%zu complex matrix = %.3f ms\n",
-         method == InverseMethod::kLibrary ? "library" : "deinterleaved", kSize,
-         kSize, timer.avg_usec(freq_ghz) / (1000.0 * kNumIters));
+  // timer.stop();
+  // printf("Armadillo: Average time for %s inverse of %zux%zu complex matrix = %.3f ms\n",
+  //        method == InverseMethod::kLibrary ? "library" : "deinterleaved", kSize,
+  //        kSize, timer.avg_usec(freq_ghz) / (1000.0 * kNumIters));
   return (method == InverseMethod::kDeinterleaved) ? std::complex<float>(accu(output_real), accu(output_imag)) : accu(output_interleaved);
 }
 
@@ -124,9 +124,9 @@ std::complex<float> test_eigen_complex(const float *_in_mat_arr_real, const floa
   Eigen::Map<Eigen::Matrix<float, kSize, kSize, Eigen::ColMajor>> output_imag(out_mat_arr_imag);
   Eigen::Map<Eigen::Matrix<std::complex<float>, kSize, kSize, Eigen::ColMajor>> input_interleaved(in_mat_arr_interleaved);
   Eigen::Map<Eigen::Matrix<std::complex<float>, kSize, kSize, Eigen::ColMajor>> output_interleaved(out_mat_arr_interleaved);
-  TscTimer timer;
-  timer.start();
-  for (size_t iter = 0; iter < kNumIters; iter++) {
+  // TscTimer timer;
+  // timer.start();
+  //for (size_t iter = 0; iter < kNumIters; iter++) {
     if (mode == InverseMode::kPseudoInverse) {
       
     } else {
@@ -140,35 +140,72 @@ std::complex<float> test_eigen_complex(const float *_in_mat_arr_real, const floa
     }
     in_mat_arr_real[0] = out_mat_arr_real[0];
     in_mat_arr_imag[0] = out_mat_arr_imag[0];
-  }
+  //}
 
-  timer.stop();
-  printf("Eigen: Average time for %s inverse of %zux%zu complex matrix = %.3f ms\n",
-          method == InverseMethod::kLibrary ? "library" : "deinterleaved", kSize,
-          kSize, timer.avg_usec(freq_ghz) / (1000.0 * kNumIters));
+  //timer.stop();
+  // printf("Eigen: Average time for %s inverse of %zux%zu complex matrix = %.3f ms\n",
+  //         method == InverseMethod::kLibrary ? "library" : "deinterleaved", kSize,
+  //         kSize, timer.avg_usec(freq_ghz) / (1000.0 * kNumIters));
   return (method == InverseMethod::kDeinterleaved) ? std::complex<float>(output_real.sum(), output_imag.sum()) : output_interleaved.sum();
 }
 
 int main() {
   //setenv("MKL_VERBOSE", "1", 1);
+  double t0,t00,t1,t2,t3,t4;
+  t0=t00=t1=t2=t3=t4=0.0;
+  float ret_0, ret_00;
+  std::complex<float> ret_1, ret_2, ret_3, ret_4;
   srand(time(0));
   freq_ghz = measure_rdtsc_freq();
   mkl_set_num_threads(1);
-  
-  float *in_base_mat_arr_real = new float[kSize * kSize];
-  float *in_base_mat_arr_imag = new float[kSize * kSize];
-  for (size_t i = 0; i < kSize * kSize; i++) {
-    in_base_mat_arr_real[i] =
-        static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-    in_base_mat_arr_imag[i] =
-        static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+  TscTimer timer;
+  for(int i = 0; i < kNumIters; i++) {
+    float *in_base_mat_arr_real = new float[kSize * kSize];
+    float *in_base_mat_arr_imag = new float[kSize * kSize];
+    for (size_t i = 0; i < kSize * kSize; i++) {
+      in_base_mat_arr_real[i] =
+          static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      in_base_mat_arr_imag[i] =
+          static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+    }
+    timer.start();
+    ret_0 = test_arma_real(in_base_mat_arr_real, InverseMode::kInverse);
+    timer.stop(); t0+=timer.avg_usec(freq_ghz);
+    timer.start();
+    ret_00 = test_eigen_real(in_base_mat_arr_real, InverseMode::kInverse);
+    timer.stop(); t00+=timer.avg_usec(freq_ghz);
+    timer.start();
+    ret_1 = test_arma_complex(in_base_mat_arr_real, in_base_mat_arr_imag, InverseMode::kInverse, InverseMethod::kLibrary);
+    timer.stop(); t1+=timer.avg_usec(freq_ghz);
+    timer.start();
+    ret_2 = test_arma_complex(in_base_mat_arr_real, in_base_mat_arr_imag, InverseMode::kInverse, InverseMethod::kDeinterleaved);
+    timer.stop(); t2+=timer.avg_usec(freq_ghz);
+    timer.start();
+    ret_3 = test_eigen_complex(in_base_mat_arr_real, in_base_mat_arr_imag, InverseMode::kInverse, InverseMethod::kLibrary);
+    timer.stop(); t3+=timer.avg_usec(freq_ghz);
+    timer.start();
+    ret_4 = test_eigen_complex(in_base_mat_arr_real, in_base_mat_arr_imag, InverseMode::kInverse, InverseMethod::kDeinterleaved);
+    timer.stop(); t4+=timer.avg_usec(freq_ghz);
+    delete[] in_base_mat_arr_real;
   }
-  float ret_0 = test_arma_real(in_base_mat_arr_real, InverseMode::kInverse);
-  float ret_00 = test_eigen_real(in_base_mat_arr_real, InverseMode::kInverse);
-  std::complex<float> ret_1 = test_arma_complex(in_base_mat_arr_real, in_base_mat_arr_imag, InverseMode::kInverse, InverseMethod::kLibrary);
-  std::complex<float> ret_2 = test_arma_complex(in_base_mat_arr_real, in_base_mat_arr_imag, InverseMode::kInverse, InverseMethod::kDeinterleaved);
-  std::complex<float> ret_3 = test_eigen_complex(in_base_mat_arr_real, in_base_mat_arr_imag, InverseMode::kInverse, InverseMethod::kLibrary);
-  std::complex<float> ret_4 = test_eigen_complex(in_base_mat_arr_real, in_base_mat_arr_imag, InverseMode::kInverse, InverseMethod::kDeinterleaved);
+  printf("Armadillo: Average time for %s of %zux%zu real matrix = %.3f ms\n",
+         "inverse", kSize,
+         kSize, t0 / (1000.0 * kNumIters));
+  printf("Eigen: Average time for %s of %zux%zu real matrix = %.3f ms\n",
+         "inverse", kSize,
+         kSize, t00 / (1000.0 * kNumIters));
+  printf("Armadillo: Average time for %s inverse of %zux%zu complex matrix = %.3f ms\n",
+         "library", kSize,
+         kSize, t1 / (1000.0 * kNumIters));
+  printf("Armadillo: Average time for %s inverse of %zux%zu complex matrix = %.3f ms\n",
+          "deinterleaved", kSize,
+          kSize, t2 / (1000.0 * kNumIters));
+  printf("Eigen: Average time for %s inverse of %zux%zu complex matrix = %.3f ms\n",
+         "library", kSize,
+         kSize, t3 / (1000.0 * kNumIters));
+  printf("Eigen: Average time for %s inverse of %zux%zu complex matrix = %.3f ms\n",
+          "deinterleaved", kSize,
+          kSize, t4 / (1000.0 * kNumIters));
   std::cout << ret_0 << std::endl;
   std::cout << ret_00 << std::endl;
   std::cout << ret_1 << std::endl;

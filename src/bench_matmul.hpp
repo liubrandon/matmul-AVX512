@@ -90,7 +90,7 @@ void generateMatrix(Complex* mat, int size, int mod = 30) {
     Complex_int16 zero = {0, 0};
     for (int i = 0; i < size; i++) {
         int16_t ri = static_cast<int16_t>((i % (mod+1)) + 1);
-        Complex_int16 num = {1, 0};//{static_cast<int16_t>(ri+1), ri};
+        Complex_int16 num = {1, 0};//{ri, static_cast<int16_t>(ri+1)};
         mat[i] = mod ? num : zero;
     }
 }
@@ -172,18 +172,19 @@ double runColMajorBenchmark(const Complex_int16* A, int r1, int c1, const Comple
     }
     int16_t Areal[r1*c1] __attribute__((aligned(64)));
     int16_t Aimag[r1*c1] __attribute__((aligned(64)));
-    double deinterleaveStart = getTime();
-    for(int iter = 0; iter < numIter; iter++) {
-        for(int i = 0; i < r1; i++) {
-            for(int j = 0; j < c1; j++) {
-                Areal[i*c1+j] = Atrans[i*c1+j].real;
-                Aimag[i*c1+j] = Atrans[i*c1+j].imag;
-            }
-        }
-    }
-    *deinterleaveTime = timeSince(deinterleaveStart);
+    // for(int iter = 0; iter < numIter; iter++) {
+    //     deinterleaveMatrix(A, r1*c1, Areal, Aimag);
+    // }
     double start = getTime();
     for (int i = 0; i < numIter; i++) {
+        //deinterleaveMatrix(A, r1*c1, Areal, Aimag);
+        double deinterleaveStart = getTime();
+        for(int i = 0; i < r1*c1; i++) {
+            Areal[i] = A[i].real;
+            Aimag[i] = A[i].imag;
+        }
+        //deinterleaveMatrix(A, r1*c1, Areal, Aimag);
+        *deinterleaveTime += timeSince(deinterleaveStart);
         matmulAVX512_colmajor(Areal, Aimag, r1, c1, B, C);
     }
     return timeSince(start);
@@ -236,7 +237,7 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
     armaTime = vclTime = rowMajorTime = colMajorTime = floatcolMajorTime = 0.0;
     std::vector<double> armaTimes, vclTimes, colMajorTimes, floatcolMajorTimes, rowMajorTimes, deTimes;
     for(int i = 64; i > 0; i--) {
-        int nrows = i;
+        int nrows = 64;
         int ncols = i;
         int mod = 50;
         Complex_int16 A[nrows * ncols] __attribute__((aligned(64))); 
@@ -247,10 +248,12 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
         generateMatrix(B, ncols, mod);
         generateMatrix(C, nrows, 0); // initialize C to all 0s
 
-        // printMatrix(A, nrows, ncols);
+        // // printMatrix(A, nrows, ncols);
         // int16_t a_real[nrows * ncols] __attribute__((aligned(64)));
         // int16_t a_imag[nrows * ncols] __attribute__((aligned(64)));
         // deinterleaveMatrix(A, nrows*ncols, a_real, a_imag);
+        // printIntMatrix(a_real, nrows, ncols);
+        // printIntMatrix(a_imag, nrows, ncols);
         // return;
 
         // Initialize matrices for Armadillo (Copy from A, B, C)
@@ -272,7 +275,7 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
         Complex_int16 rowC[nrows] __attribute__((aligned(64)));
         generateMatrix(rowC, nrows, 0); // initialize C to all 0s
 
-        double deinterleaveTime;
+        double deinterleaveTime=0.0;
         //vclTime = runVCLBenchmark(floatA, nrows, ncols, floatB, floatC, numIter);
         armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
         //rowMajorTime = runRowMajorBenchmark(A, nrows, ncols, B, rowC, numIter);
@@ -317,10 +320,10 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
         printf("       -----------------------\n\n");
     }
     std::cout << "MKL float,"; printVector(armaTimes);
-    std::cout << "VCL float,"; printVector(vclTimes);
-    std::cout << "Row-maj int16,"; printVector(rowMajorTimes);
+    // std::cout << "VCL float,"; printVector(vclTimes);
+    // std::cout << "Row-maj int16,"; printVector(rowMajorTimes);
     std::cout << "Col-maj int16,"; printVector(colMajorTimes);
-    std::cout << "Col-maj float,"; printVector(floatcolMajorTimes);
+    // std::cout << "Col-maj float,"; printVector(floatcolMajorTimes);
     std::cout << "Col-maj int16 deinterleave,"; printVector(deTimes);
     double totalArmaTime = accumulate(armaTimes.begin(), armaTimes.end(), 0);
     double totalVCLTime = accumulate(vclTimes.begin(), vclTimes.end(), 0);

@@ -1,4 +1,6 @@
-.PHONY: inv com clean com_example volk
+.PHONY: inv com clean com_example volk deinterleave_bench
+deinterleave_bench:
+	g++ deinterleave_bench.cpp -o deinterleave_bench -std=c++17 -I/usr/local/include/volk/build/include/volk -L/usr/local/include/volk/build/lib/ -l:libvolk.so -Wl,--no-as-needed -march=native -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl -mavx512ifma -mavx512vbmi -mavx2 -O3
 volk:
 	g++ -std=c++17 -I/usr/local/include/volk/build/include/volk volk_test.cpp -o volk -L/usr/local/include/volk/build/lib/ -l:libvolk.so -Wl,--no-as-needed -march=native
 inv:
