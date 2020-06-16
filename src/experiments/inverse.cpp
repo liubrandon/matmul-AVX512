@@ -1,10 +1,10 @@
 #include "inverse.hpp"
-#include "timer.h"
+#include "../timer.hpp"
 #include <mkl.h>
 #include <armadillo>
 #include <eigen3/Eigen/Dense>
 //g++ -Wl,--no-as-needed -O3 -ffast-math -larmadillo -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl inverse.cpp -o inv
-static constexpr size_t kNumIters = 10000;
+static constexpr size_t kNumIters = 1000;
 static constexpr size_t kSize = 64;
 double freq_ghz;
 
@@ -16,8 +16,6 @@ float test_arma_real(const float *_in_mat_arr, InverseMode mode) {
   arma::Mat<float> input(in_mat_arr, kSize, kSize, false);
   arma::Mat<float> output(out_mat_arr, kSize, kSize, false);
 
-  TscTimer timer;
-  timer.start();
   //for (size_t iter = 0; iter < kNumIters; iter++) {
     if (mode == InverseMode::kPseudoInverse) {
       output = pinv(input);
@@ -156,9 +154,7 @@ int main() {
   float ret_0, ret_00;
   std::complex<float> ret_1, ret_2, ret_3, ret_4;
   srand(time(0));
-  freq_ghz = measure_rdtsc_freq();
   mkl_set_num_threads(1);
-  TscTimer timer;
   for(int i = 0; i < kNumIters; i++) {
     float *in_base_mat_arr_real = new float[kSize * kSize];
     float *in_base_mat_arr_imag = new float[kSize * kSize];
@@ -168,25 +164,26 @@ int main() {
       in_base_mat_arr_imag[i] =
           static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
     }
-    timer.start();
+    double start0 = getTime();
     ret_0 = test_arma_real(in_base_mat_arr_real, InverseMode::kInverse);
-    timer.stop(); t0+=timer.avg_usec(freq_ghz);
-    timer.start();
+    t0+=timeSince(start0);
+    double start00 = getTime();
     ret_00 = test_eigen_real(in_base_mat_arr_real, InverseMode::kInverse);
-    timer.stop(); t00+=timer.avg_usec(freq_ghz);
-    timer.start();
+    t00+=timeSince(start00);
+    double start1 = getTime();
     ret_1 = test_arma_complex(in_base_mat_arr_real, in_base_mat_arr_imag, InverseMode::kInverse, InverseMethod::kLibrary);
-    timer.stop(); t1+=timer.avg_usec(freq_ghz);
-    timer.start();
+    t1+=timeSince(start1);
+    double start2 = getTime();
     ret_2 = test_arma_complex(in_base_mat_arr_real, in_base_mat_arr_imag, InverseMode::kInverse, InverseMethod::kDeinterleaved);
-    timer.stop(); t2+=timer.avg_usec(freq_ghz);
-    timer.start();
+    t2+=timeSince(start2);
+    double start3 = getTime();
     ret_3 = test_eigen_complex(in_base_mat_arr_real, in_base_mat_arr_imag, InverseMode::kInverse, InverseMethod::kLibrary);
-    timer.stop(); t3+=timer.avg_usec(freq_ghz);
-    timer.start();
+    t3+=timeSince(start3);
+    double start4 = getTime();
     ret_4 = test_eigen_complex(in_base_mat_arr_real, in_base_mat_arr_imag, InverseMode::kInverse, InverseMethod::kDeinterleaved);
-    timer.stop(); t4+=timer.avg_usec(freq_ghz);
+    t4+=timeSince(start4);
     delete[] in_base_mat_arr_real;
+    delete[] in_base_mat_arr_imag;
   }
   printf("Armadillo: Average time for %s of %zux%zu real matrix = %.3f ms\n",
          "inverse", kSize,

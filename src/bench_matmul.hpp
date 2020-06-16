@@ -17,8 +17,8 @@
 // Provides Intel Intrinsics
 #include "immintrin.h"
 // Agner Fog's Vector Class Library
-#include "vectorclass.h"
-#include "complexvec1.h"
+#include "../lib/vcl-2.01.02/vectorclass.h"
+#include "../lib/vcl-2.01.02/complexvec1.h"
 
 // Prints matrix in row major order
 template <typename Complex>
@@ -162,32 +162,32 @@ double runFloatColMajorBenchmark(const Complex_float* A, int r1, int c1, const C
     return timeSince(start);
 
 }
-double runColMajorBenchmark(const Complex_int16* A, int r1, int c1, const Complex_int16* B, Complex_int16* C, int numIter, double* deinterleaveTime) {
-    // seperate A into real and imag and transpose to make column major
-    Complex_int16 Atrans[r1*c1] __attribute__((aligned(64)));
-    for(int i = 0; i < r1; i++) {
-        for(int j = 0; j < c1; j++) {
-            Atrans[j*r1+i] = A[i*c1+j];
-        }
-    }
-    int16_t Areal[r1*c1] __attribute__((aligned(64)));
-    int16_t Aimag[r1*c1] __attribute__((aligned(64)));
-    // for(int iter = 0; iter < numIter; iter++) {
-    //     deinterleaveMatrix(A, r1*c1, Areal, Aimag);
-    // }
-    double start = getTime();
+double runColMajorBenchmark(const Complex_int16* A, int r1, int c1, const Complex_int16* B, Complex_int16* C, int numIter, double* deinterleaveTime, double* transposeTime) {
+    double computeTime = 0.0;
     for (int i = 0; i < numIter; i++) {
-        //deinterleaveMatrix(A, r1*c1, Areal, Aimag);
+        double transposeStart = getTime();
+        // seperate A into real and imag and transpose to make column major
+        Complex_int16 Atrans[r1*c1] __attribute__((aligned(64)));
+        for(int i = 0; i < r1; i++) {
+            for(int j = 0; j < c1; j++) {
+                Atrans[j*r1+i] = A[i*c1+j];
+            }
+        }
+        *transposeTime += timeSince(transposeStart);
         double deinterleaveStart = getTime();
+        int16_t Areal[r1*c1] __attribute__((aligned(64)));
+        int16_t Aimag[r1*c1] __attribute__((aligned(64)));
         for(int i = 0; i < r1*c1; i++) {
             Areal[i] = A[i].real;
             Aimag[i] = A[i].imag;
         }
-        //deinterleaveMatrix(A, r1*c1, Areal, Aimag);
         *deinterleaveTime += timeSince(deinterleaveStart);
+
+        double start = getTime();
         matmulAVX512_colmajor(Areal, Aimag, r1, c1, B, C);
+        computeTime += timeSince(start);
     }
-    return timeSince(start);
+    return computeTime;
 }
 
 // Runs Armadillo matrix multiply numIter times and returns execution time in μs
@@ -235,10 +235,10 @@ Dim testDims[NTESTS] = {{64,16},{16,64}};
 void runBenchmarks(int numIter = DEFAULT_ITER) {
     double armaTime, vclTime, rowMajorTime, colMajorTime, floatcolMajorTime;
     armaTime = vclTime = rowMajorTime = colMajorTime = floatcolMajorTime = 0.0;
-    std::vector<double> armaTimes, vclTimes, colMajorTimes, floatcolMajorTimes, rowMajorTimes, deTimes;
-    for(int i = 64; i > 0; i--) {
-        int nrows = 64;
-        int ncols = i;
+    std::vector<double> armaTimes, vclTimes, colMajorTimes, floatcolMajorTimes, rowMajorTimes, deTimes, transTimes;
+    for(int i = 0; i < NTESTS; i++) {
+        int nrows = testDims[i].nrows;
+        int ncols = testDims[i].ncols;
         int mod = 50;
         Complex_int16 A[nrows * ncols] __attribute__((aligned(64))); 
         Complex_int16 B[ncols] __attribute__((aligned(64)));         // B is a vector
@@ -276,55 +276,58 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
         generateMatrix(rowC, nrows, 0); // initialize C to all 0s
 
         double deinterleaveTime=0.0;
+        double transposeTime=0.0;
         //vclTime = runVCLBenchmark(floatA, nrows, ncols, floatB, floatC, numIter);
-        armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
+        //armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
         //rowMajorTime = runRowMajorBenchmark(A, nrows, ncols, B, rowC, numIter);
-        colMajorTime = runColMajorBenchmark(A, nrows, ncols, B, colC, numIter, &deinterleaveTime);
+        colMajorTime = runColMajorBenchmark(A, nrows, ncols, B, colC, numIter, &deinterleaveTime, &transposeTime);
 
         //floatcolMajorTime = runFloatColMajorBenchmark(floatA, nrows, ncols, floatB, floatC, numIter);
-        vclTimes.push_back(vclTime);
-        armaTimes.push_back(armaTime);
-        colMajorTimes.push_back(colMajorTime);
-        floatcolMajorTimes.push_back(floatcolMajorTime);
-        rowMajorTimes.push_back(rowMajorTime);
-        deTimes.push_back(deinterleaveTime);
+        // vclTimes.push_back(vclTime/(double)numIter);
+        // armaTimes.push_back(armaTime/(double)numIter);
+        colMajorTimes.push_back(colMajorTime/(double)numIter);
+        // floatcolMajorTimes.push_back(floatcolMajorTime/(double)numIter);
+        // rowMajorTimes.push_back(rowMajorTime/(double)numIter);
+        deTimes.push_back(deinterleaveTime/(double)numIter);
+        transTimes.push_back(transposeTime/(double)numIter);
         // Assert the resulting matrices are the same
         // assert(matricesEqual(C, armaC));
         // assert(matricesEqual(floatC, armaC));
-        assert(matricesEqual(colC, armaC));
+        //assert(matricesEqual(colC, armaC));
         // assert(matricesEqual(rowC, armaC));
 
         // Output results
-        // double avgVCL = vclTime / (double)numIter;
-        double avgArma = armaTime / (double)numIter;
-        double avgColMajor = colMajorTime / (double)numIter;
-        // double avgFloatColMajor = floatcolMajorTime / (double)numIter;
-        // double avgRowMajor = rowMajorTime / (double)numIter;
+        // double avgVCL = vclTime / ((double)numIter*1000);
+        double avgArma = armaTime / ((double)numIter);
+        double avgColMajor = colMajorTime / ((double)numIter);
+        // double avgFloatColMajor = floatcolMajorTime / ((double)numIter*1000);
+        // double avgRowMajor = rowMajorTime / ((double)numIter*1000);
 
         printf("Dimensions:          (%u x %u) * (%u x 1)\n", nrows, ncols, ncols);
         printf("Linear precoding benchmark s' = Ws executed %d times.\n", numIter);
-        printf("single float (MKL/Arma): %7.3f µs per iteration\n\n", avgArma);
+        printf("single float (MKL/Arma): %7.7f ms per iteration\n\n", avgArma);
 
-        // printf("float/col maj (AVX512): %7.3f µs per iteration\n", avgFloatColMajor);
+        // printf("float/col maj (AVX512): %7.7f ms per iteration\n", avgFloatColMajor);
         // printf("%2.2fx MKL/Armadillo float matrix * vector\n\n", avgArma / avgFloatColMajor);
 
-        printf("int16/col maj (AVX512): %7.3f µs per iteration\n", avgColMajor);
+        printf("int16/col maj (AVX512): %7.7f ms per iteration\n", avgColMajor);
         printf("%2.2fx MKL/Armadillo float matrix * vector\n", avgArma / avgColMajor);
         // printf("%2.2fx my AVX512 float matrix * vector\n\n", avgFloatColMajor / avgColMajor);
 
-        // printf("int16/row maj (AVX512): %7.3f µs per iteration\n", avgRowMajor);
+        // printf("int16/row maj (AVX512): %7.7f ms per iteration\n", avgRowMajor);
         // printf("%2.2fx MKL/Armadillo float matrix * vector\n\n", avgArma / avgRowMajor);
 
-        // printf("float (VCL):      %7.3f µs per iteration\n", avgVCL);
+        // printf("float (VCL):      %7.7f ms per iteration\n", avgVCL);
         // printf("%2.2fx MKL/Armadillo float matrix * vector\n", avgArma / avgVCL);
         printf("       -----------------------\n\n");
     }
     std::cout << "MKL float,"; printVector(armaTimes);
     // std::cout << "VCL float,"; printVector(vclTimes);
     // std::cout << "Row-maj int16,"; printVector(rowMajorTimes);
-    std::cout << "Col-maj int16,"; printVector(colMajorTimes);
+    std::cout << "Compute,"; printVector(colMajorTimes);
     // std::cout << "Col-maj float,"; printVector(floatcolMajorTimes);
-    std::cout << "Col-maj int16 deinterleave,"; printVector(deTimes);
+    std::cout << "Deinterleave,"; printVector(deTimes);
+    std::cout << "Transpose,"; printVector(transTimes);
     double totalArmaTime = accumulate(armaTimes.begin(), armaTimes.end(), 0);
     double totalVCLTime = accumulate(vclTimes.begin(), vclTimes.end(), 0);
     double totalColMajorTime = accumulate(colMajorTimes.begin(), colMajorTimes.end(), 0);
