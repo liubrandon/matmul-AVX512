@@ -278,7 +278,7 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
         double deinterleaveTime=0.0;
         double transposeTime=0.0;
         //vclTime = runVCLBenchmark(floatA, nrows, ncols, floatB, floatC, numIter);
-        //armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
+        armaTime = runArmaBenchmark(armaA, armaB, armaC, numIter);
         //rowMajorTime = runRowMajorBenchmark(A, nrows, ncols, B, rowC, numIter);
         colMajorTime = runColMajorBenchmark(A, nrows, ncols, B, colC, numIter, &deinterleaveTime, &transposeTime);
 
@@ -291,9 +291,9 @@ void runBenchmarks(int numIter = DEFAULT_ITER) {
         deTimes.push_back(deinterleaveTime/(double)numIter);
         transTimes.push_back(transposeTime/(double)numIter);
         // Assert the resulting matrices are the same
-        // assert(matricesEqual(C, armaC));
+        //assert(matricesEqual(C, armaC));
         // assert(matricesEqual(floatC, armaC));
-        //assert(matricesEqual(colC, armaC));
+        assert(matricesEqual(colC, armaC));
         // assert(matricesEqual(rowC, armaC));
 
         // Output results

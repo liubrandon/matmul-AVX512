@@ -52,3 +52,4 @@ src/experiments/com_example
 src/experiments/volk
 src/experiments/deinterleave_bench
 src/experiments/deinterleave.asm
+src/experiments/mkl_bench
