@@ -88,22 +88,32 @@ bool vectorsEqual(arma::cx_fmat& src, MKL_Complex8* a, MKL_Complex8* b, MKL_Comp
 
 int main(int argc, char *argv[]) {
     srand(time(0));
-    int warmup = WARMUP;
-    int numIter = NITER;
-    if(argc == 2) {
-        if(strcmp(argv[1], "-v") == 0) {
-            warmup = 0;
-            numIter = 1;
-            setenv("MKL_VERBOSE", "1", 1);
-        } else {
-            fprintf(stderr, "first argument must be -v for MKL verbose mode\n");
-            return 1;
+    unsigned long warmup = WARMUP;
+    unsigned long numIter = NITER;
+    MKL_INT m = 64;
+    MKL_INT n = 64;
+    bool iterSet = false;
+    if(argc > 1) {
+        for(int i = 1; i < argc; i++) {
+            if(strcmp(argv[i], "-v") == 0) {
+                warmup = 0;
+                numIter = 1;
+                setenv("MKL_VERBOSE", "1", 1);
+                break;
+            } else if(!iterSet && strtoul(argv[i], NULL, 0) != 0) {
+                numIter = (strtoul(argv[i], NULL, 0));
+                iterSet = true;
+            } else if(strtoul(argv[i], NULL, 0) != 0) {
+                char* nPtr;
+                m = strtoul(argv[i], &nPtr, 0);
+                n = strtoul(nPtr+1, NULL, 0);
+            } else {
+                fprintf(stderr, "Usage: %s [-v] [numIter] [MxN]\nIf you run in verbose mode with -v subsequent arguments will be ignored.", argv[0]);
+                return 1;
+            }
         }
     }
     MKL_Complex8 *a, *x, *y, *a2, *b2, *c2, *a3, *b3, *c3;
-    MKL_INT m, n;
-    m = 16;
-    n = 64;
     arma::cx_fmat a1(m, n);
     arma::cx_fmat x1(n, 1);
     arma::cx_fmat y1(m, 1);
@@ -144,7 +154,7 @@ int main(int argc, char *argv[]) {
     double cgemvTime = benchCGEMV(a, x, y, m, n, numIter);
     double cgemmTime = benchCGEMM(a2, b2, c2, m, n, numIter);
     double jitcgemmTime = benchJITCGEMM(a3, b3, c3, m, n, numIter);
-    printf("%d iterations, (%dx%d) * (%dx%d)\n", numIter, m, n, n, 1);
+    printf("%ld iterations, (%dx%d) * (%dx%d)\n", numIter, m, n, n, 1);
     printf("Armadillo cgemv: %.5f µs per iteration\n", armaTime/(double)numIter);
     printf("    cblas_cgemv: %.5f µs per iteration\n", cgemvTime/(double)numIter);
     printf("    cblas_cgemm: %.5f µs per iteration\n", cgemmTime/(double)numIter);
