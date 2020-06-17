@@ -8,7 +8,7 @@
 
 #define WARMUP 100
 #define NITER 1000000
-
+#define TOLERANCE 0.0001f
 // m x n matrix
 double benchArma(arma::cx_fmat& a1, arma::cx_fmat& x1, arma::cx_fmat& y1, int m, int n, int numIter) {
     double start = getTime();
@@ -74,7 +74,7 @@ MKL_Complex8 accum(MKL_Complex8* a, int size) {
     }
     return ret;
 }
-bool cmpf(arma::cx_float a, MKL_Complex8 b, float epsilon = 0.0001f) {
+bool cmpf(arma::cx_float a, MKL_Complex8 b, float epsilon = TOLERANCE) {
     return (fabs(a.real() - b.real) < epsilon) && (fabs(a.imag() - b.imag) < epsilon);
 }
 
@@ -85,6 +85,10 @@ bool vectorsEqual(arma::cx_fmat& src, MKL_Complex8* a, MKL_Complex8* b, MKL_Comp
     }
     return true;
 }
+void showUsageAndExit(char* progName) {
+    fprintf(stderr, "Usage: %s [MxN] [-v] [numIter]\nRuns different MKL functions for matrix-vector multiply numIter times with an MxN matrix.\nIf you enable MKL verbose mode with -v numIter will be set to 1 and subsequent arguments will be ignored.\n", progName);
+    exit(1);
+}
 
 int main(int argc, char *argv[]) {
     srand(time(0));
@@ -92,7 +96,9 @@ int main(int argc, char *argv[]) {
     unsigned long numIter = NITER;
     MKL_INT m = 64;
     MKL_INT n = 64;
-    bool iterSet = false;
+    bool dimSet = false;
+    if(argc > 4)
+        showUsageAndExit(argv[0]);
     if(argc > 1) {
         for(int i = 1; i < argc; i++) {
             if(strcmp(argv[i], "-v") == 0) {
@@ -100,16 +106,15 @@ int main(int argc, char *argv[]) {
                 numIter = 1;
                 setenv("MKL_VERBOSE", "1", 1);
                 break;
-            } else if(!iterSet && strtoul(argv[i], NULL, 0) != 0) {
-                numIter = (strtoul(argv[i], NULL, 0));
-                iterSet = true;
-            } else if(strtoul(argv[i], NULL, 0) != 0) {
+            } else if(!dimSet && strtoul(argv[i], NULL, 0) != 0) {
                 char* nPtr;
                 m = strtoul(argv[i], &nPtr, 0);
                 n = strtoul(nPtr+1, NULL, 0);
+                dimSet = true;
+            } else if(strtoul(argv[i], NULL, 0) != 0) {
+                numIter = (strtoul(argv[i], NULL, 0));
             } else {
-                fprintf(stderr, "Usage: %s [-v] [numIter] [MxN]\nIf you run in verbose mode with -v subsequent arguments will be ignored.", argv[0]);
-                return 1;
+                showUsageAndExit(argv[0]);
             }
         }
     }
@@ -159,12 +164,15 @@ int main(int argc, char *argv[]) {
     printf("    cblas_cgemv: %.5f µs per iteration\n", cgemvTime/(double)numIter);
     printf("    cblas_cgemm: %.5f µs per iteration\n", cgemmTime/(double)numIter);
     printf("  mkl_jit_cgemm: %.5f µs per iteration\n", jitcgemmTime/(double)numIter);
+    // Assert resulting values are within TOLERANCE of each other
     assert(vectorsEqual(y1, y, c2, c3));
+    printf("\nResulting vector values are within %.4f of the result calculated by Armadillo\n", TOLERANCE);
     // Output sums of resulting vectors to make sure they're the same
-    printf("(%.4f,%.4f)\n", arma::accu(y1).real(), arma::accu(y1).imag());
-    printf("(%.4f,%.4f)\n",accum(y, m).real, accum(y, m).imag);
-    printf("(%.4f,%.4f)\n", accum(c2, m).real, accum(c2, m).imag);
-    printf("(%.4f,%.4f)\n", accum(c3, m).real, accum(c3, m).imag);
+    printf("Accumulation of resulting vectors\n");
+    printf("Armadillo cgemv: (%.4f,%.4f)\n", arma::accu(y1).real(), arma::accu(y1).imag());
+    printf("    cblas_cgemv: (%.4f,%.4f)\n",accum(y, m).real, accum(y, m).imag);
+    printf("    cblas_cgemm: (%.4f,%.4f)\n", accum(c2, m).real, accum(c2, m).imag);
+    printf("  mkl_jit_cgemm: (%.4f,%.4f)\n", accum(c3, m).real, accum(c3, m).imag);
 
     mkl_free(a); mkl_free(x); mkl_free(y);
     mkl_free(a2); mkl_free(b2); mkl_free(c2);
