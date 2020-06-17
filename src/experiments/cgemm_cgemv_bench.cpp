@@ -46,6 +46,7 @@ double benchCGEMM(MKL_Complex8* a, MKL_Complex8* b, MKL_Complex8* c, MKL_INT m, 
 }
 
 double benchJITCGEMM(MKL_Complex8* a, MKL_Complex8* b, MKL_Complex8* c, MKL_INT m, MKL_INT k, int numIter) {
+    if(numIter == 0) return 0.0;
     MKL_Complex8 alpha = {1, 0};
     MKL_Complex8 beta = {0, 0};
     MKL_INT lda = m;
@@ -85,12 +86,12 @@ bool vectorsEqual(arma::cx_fmat& src, MKL_Complex8* a, MKL_Complex8* b, MKL_Comp
     return true;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char *argv[]) {
     srand(time(0));
     int warmup = WARMUP;
     int numIter = NITER;
     if(argc == 2) {
-        if(strcmp(argv[2], "-v") == 0) {
+        if(strcmp(argv[1], "-v") == 0) {
             warmup = 0;
             numIter = 1;
             setenv("MKL_VERBOSE", "1", 1);
@@ -120,9 +121,9 @@ int main(int argc, char** argv) {
     c3 = (MKL_Complex8*)mkl_calloc(m, sizeof(MKL_Complex8), 64);
     assert((a!=NULL)&&(x!=NULL)&&(y!=NULL)&&
            (a2!=NULL)&&(b2!=NULL)&&(c2!=NULL)&&
-           (a3!=NULL)&&(b3!=NULL)&&(c3!=NULL));
+           (a3!=NULL)&&(b3!=NULL)&&(c3!=NULL)); // make sure mkl_calloc didn't fail
     
-    // Generate random matrix and vector for multiplication
+    // Generate the same random matrix and vector for multiplication for all benchmarks
     for(int i = 0; i < m*n; i++) {
         a[i] = {static_cast<float>(rand()/static_cast<float>(RAND_MAX)), static_cast<float>(rand()/static_cast<float>(RAND_MAX))};
         a1[i] = {a[i].real, a[i].imag};
@@ -138,6 +139,7 @@ int main(int argc, char** argv) {
     benchArma(a1, x1, y1, m, n, warmup);
     benchCGEMV(a, x, y, m, n, warmup);
     benchCGEMM(a, x, y, m, n, warmup);
+    benchJITCGEMM(a, x, y, m, n, warmup);
     double armaTime = benchArma(a1, x1, y1, m, n, numIter);
     double cgemvTime = benchCGEMV(a, x, y, m, n, numIter);
     double cgemmTime = benchCGEMM(a2, b2, c2, m, n, numIter);
