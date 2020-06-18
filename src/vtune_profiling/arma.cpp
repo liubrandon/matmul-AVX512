@@ -1,5 +1,4 @@
-#include "../bench_matmul.hpp"
-
+#include "../bench_matvec.hpp"
 
 void runBench(int numIter = DEFAULT_ITER) {
     int nrows = 64;

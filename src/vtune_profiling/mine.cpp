@@ -1,4 +1,4 @@
-#include "../bench_matmul.hpp"
+#include "../bench_matvec.hpp"
 
 double runMyBenchmark(const Complex_int16* A, int r1, int c1, const Complex_int16* B, Complex_int16* C, int numIter) {
     double start = getTime();
@@ -16,7 +16,7 @@ double runMyBenchmark(const Complex_int16* A, int r1, int c1, const Complex_int1
             Areal[i] = A[i].real;
             Aimag[i] = A[i].imag;
         }
-        matmulAVX512_colmajor(Areal, Aimag, r1, c1, B, C);
+        matvecAVX512_colmajor(Areal, Aimag, r1, c1, B, C);
     }
     return timeSince(start);
 }

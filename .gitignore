@@ -1,6 +1,6 @@
 # Executables #
 ###############
-matmul
+matvec
 
 # Compiled source #
 ###################
@@ -45,7 +45,7 @@ Thumbs.db
 src/temp.py
 src/results.txt
 src/latest results.txt
-src/matmul_arb.cpp
+src/matvec_arb.cpp
 src/experiments/inv
 src/experiments/com
 src/experiments/com_example

@@ -1,5 +1,5 @@
-#ifndef MATMUL_HPP
-#define MATMUL_HPP
+#ifndef MATVEC_HPP
+#define MATVEC_HPP
 // Project file headers
 #include "complex_dotproduct.hpp"
 #include "timer.hpp"
@@ -18,63 +18,8 @@
 #include "vectorclass.h"
 #include "complexvec1.h"
 
-static inline void matmulVCL(const Complex_float* A, const int nrows, const int ncols, const Complex_float* B, Complex_float* C) {
-    static const Complex8f bSlice1 = *(Complex8f*)(B+(0*8));
-    static const Complex8f bSlice2 = *(Complex8f*)(B+(1*8));
-    static const Complex8f bSlice3 = *(Complex8f*)(B+(2*8));
-    static const Complex8f bSlice4 = *(Complex8f*)(B+(3*8));
-    if(ncols == 8) {
-        for(int i = 0; i < nrows*ncols; i += 8) {
-            const Complex1f dp = chorizontal_add(*(Complex8f*)(A+i) * bSlice1);
-            const Complex_float res = {dp.real(), dp.imag()};
-            *C = res;
-            C += 1;
-        }
-    }
-    else if(ncols == 16) {
-        for(int i = 0; i < nrows*ncols; i += 16) {
-            const Complex1f dp = chorizontal_add(*(Complex8f*)(A+i+(0*8)) * bSlice1)
-                               + chorizontal_add(*(Complex8f*)(A+i+(1*8)) * bSlice2);
-            const Complex_float res = {dp.real(), dp.imag()};
-            *C = res;
-            C += 1;
-        }
-    }
-    else if(ncols == 32) {
-        for(int i = 0; i < nrows*ncols; i += 32) {
-            const Complex1f dp = chorizontal_add(*(Complex8f*)(A+i+(0*8)) * bSlice1)
-                               + chorizontal_add(*(Complex8f*)(A+i+(1*8)) * bSlice2)
-                               + chorizontal_add(*(Complex8f*)(A+i+(2*8)) * bSlice3)
-                               + chorizontal_add(*(Complex8f*)(A+i+(3*8)) * bSlice4);
-            const Complex_float res = {dp.real(), dp.imag()};
-            *C = res;
-            C += 1;
-        }
-    }
-    else if(ncols == 64) {
-        static const Complex8f bSlice5 = *(Complex8f*)(B+(4*8));
-        static const Complex8f bSlice6 = *(Complex8f*)(B+(5*8));
-        static const Complex8f bSlice7 = *(Complex8f*)(B+(6*8));
-        static const Complex8f bSlice8 = *(Complex8f*)(B+(7*8));
-        for(int i = 0; i < nrows*ncols; i += 64) {
-            const Complex1f dp = chorizontal_add(*(Complex8f*)(A+i+(0*8)) * bSlice1)
-                               + chorizontal_add(*(Complex8f*)(A+i+(1*8)) * bSlice2)
-                               + chorizontal_add(*(Complex8f*)(A+i+(2*8)) * bSlice3)
-                               + chorizontal_add(*(Complex8f*)(A+i+(3*8)) * bSlice4)
-                               + chorizontal_add(*(Complex8f*)(A+i+(4*8)) * bSlice5)
-                               + chorizontal_add(*(Complex8f*)(A+i+(5*8)) * bSlice6)
-                               + chorizontal_add(*(Complex8f*)(A+i+(6*8)) * bSlice7)
-                               + chorizontal_add(*(Complex8f*)(A+i+(7*8)) * bSlice8);
-            const Complex_float res = {dp.real(), dp.imag()};
-            *C = res;
-            C += 1;
-        }
-    }
-}
-
-
-// pass in real and imag matrices where nrows x ncols is the size of Areal and real and imag are stored column major
-static inline void matmulAVX512_colmajor(const int16_t* Areal, const int16_t* Aimag, const int nrows, const int ncols, const Complex_int16* B, Complex_int16* C) {
+// A is a complex matrix stored in split format dimensions nrows x ncols and B is a complex vector stored in interleaved format with length ncols
+static inline void matvecAVX512_colmajor(const int16_t* Areal, const int16_t* Aimag, const int nrows, const int ncols, const Complex_int16* B, Complex_int16* C) {
     int row = 0;
     if(nrows >= 32) { // If there are at least 32 rows, use as many 512 bit vectors of 32 elements as you can first
         for( ; row < nrows && nrows-row >=32 ; row+=32) { // Operate on a strip of data 32 rows wide at a time (__m512i)
@@ -97,7 +42,7 @@ static inline void matmulAVX512_colmajor(const int16_t* Areal, const int16_t* Ai
                 __m512i ad = _mm512_mullo_epi16(a, d);
                 __m512i partialImag = _mm512_add_epi16(bc, ad); 
 
-                // Accumulate in result (see if theres a fused instruction for sub-add and add-add)
+                // Accumulate in result
                 realResult = _mm512_add_epi16(realResult, partialReal);
                 imagResult = _mm512_add_epi16(imagResult, partialImag);
             }
@@ -219,7 +164,7 @@ static inline void matmulAVX512_colmajor(const int16_t* Areal, const int16_t* Ai
     
 }
 
-static inline void matmulAVXFloat_colmajor(const float* Areal, const float* Aimag, const int nrows, const int ncols, const Complex_float* B, Complex_float* C) {
+static inline void matvecAVXFloat_colmajor(const float* Areal, const float* Aimag, const int nrows, const int ncols, const Complex_float* B, Complex_float* C) {
     if(nrows == 16) {
         __m512 realResult = _mm512_set1_ps(0); // zero out accumulators
         __m512 imagResult = _mm512_set1_ps(0);
@@ -289,7 +234,7 @@ static inline void matmulAVXFloat_colmajor(const float* Areal, const float* Aima
 }
 
 // Areal and Aimag are the nrows x ncols real and imag component matrices stored in row major order
-static inline void matmulAVX512_rowmajor(const int16_t* Areal, const int16_t* Aimag, const int nrows, const int ncols, const int16_t* Breal, const int16_t* Bimag, Complex_int16* C) {
+static inline void matvecAVX512_rowmajor(const int16_t* Areal, const int16_t* Aimag, const int nrows, const int ncols, const int16_t* Breal, const int16_t* Bimag, Complex_int16* C) {
     Complex_int16 tempC[64] __attribute__((aligned(64)));
     memset((void*)tempC, 0, 64*sizeof(tempC[0]));
     int cIdx = 0;
@@ -378,6 +323,60 @@ static inline void matmulAVX512_rowmajor(const int16_t* Areal, const int16_t* Ai
     }
     for(int r = 0; r < nrows; r+=16) {
         _mm512_storeu_si512((void*)(&C[r]), _mm512_loadu_si512((const void*)(&tempC[r])));
+    }
+}
+
+static inline void matvecVCL(const Complex_float* A, const int nrows, const int ncols, const Complex_float* B, Complex_float* C) {
+    static const Complex8f bSlice1 = *(Complex8f*)(B+(0*8));
+    static const Complex8f bSlice2 = *(Complex8f*)(B+(1*8));
+    static const Complex8f bSlice3 = *(Complex8f*)(B+(2*8));
+    static const Complex8f bSlice4 = *(Complex8f*)(B+(3*8));
+    if(ncols == 8) {
+        for(int i = 0; i < nrows*ncols; i += 8) {
+            const Complex1f dp = chorizontal_add(*(Complex8f*)(A+i) * bSlice1);
+            const Complex_float res = {dp.real(), dp.imag()};
+            *C = res;
+            C += 1;
+        }
+    }
+    else if(ncols == 16) {
+        for(int i = 0; i < nrows*ncols; i += 16) {
+            const Complex1f dp = chorizontal_add(*(Complex8f*)(A+i+(0*8)) * bSlice1)
+                               + chorizontal_add(*(Complex8f*)(A+i+(1*8)) * bSlice2);
+            const Complex_float res = {dp.real(), dp.imag()};
+            *C = res;
+            C += 1;
+        }
+    }
+    else if(ncols == 32) {
+        for(int i = 0; i < nrows*ncols; i += 32) {
+            const Complex1f dp = chorizontal_add(*(Complex8f*)(A+i+(0*8)) * bSlice1)
+                               + chorizontal_add(*(Complex8f*)(A+i+(1*8)) * bSlice2)
+                               + chorizontal_add(*(Complex8f*)(A+i+(2*8)) * bSlice3)
+                               + chorizontal_add(*(Complex8f*)(A+i+(3*8)) * bSlice4);
+            const Complex_float res = {dp.real(), dp.imag()};
+            *C = res;
+            C += 1;
+        }
+    }
+    else if(ncols == 64) {
+        static const Complex8f bSlice5 = *(Complex8f*)(B+(4*8));
+        static const Complex8f bSlice6 = *(Complex8f*)(B+(5*8));
+        static const Complex8f bSlice7 = *(Complex8f*)(B+(6*8));
+        static const Complex8f bSlice8 = *(Complex8f*)(B+(7*8));
+        for(int i = 0; i < nrows*ncols; i += 64) {
+            const Complex1f dp = chorizontal_add(*(Complex8f*)(A+i+(0*8)) * bSlice1)
+                               + chorizontal_add(*(Complex8f*)(A+i+(1*8)) * bSlice2)
+                               + chorizontal_add(*(Complex8f*)(A+i+(2*8)) * bSlice3)
+                               + chorizontal_add(*(Complex8f*)(A+i+(3*8)) * bSlice4)
+                               + chorizontal_add(*(Complex8f*)(A+i+(4*8)) * bSlice5)
+                               + chorizontal_add(*(Complex8f*)(A+i+(5*8)) * bSlice6)
+                               + chorizontal_add(*(Complex8f*)(A+i+(6*8)) * bSlice7)
+                               + chorizontal_add(*(Complex8f*)(A+i+(7*8)) * bSlice8);
+            const Complex_float res = {dp.real(), dp.imag()};
+            *C = res;
+            C += 1;
+        }
     }
 }
 #endif

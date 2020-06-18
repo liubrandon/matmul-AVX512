@@ -1,7 +1,7 @@
-#ifndef BENCH_MATMUL_HPP
-#define BENCH_MATMUL_HPP
+#ifndef BENCH_MATVEC_HPP
+#define BENCH_MATVEC_HPP
 // Project file headers
-#include "matmul.hpp"
+#include "matvec.hpp"
 #include "complex_dotproduct.hpp"
 #include "timer.hpp"
 #include "bench_dot.hpp"
@@ -135,7 +135,7 @@ double runRowMajorBenchmark(const Complex_int16* A, int r1, int c1, const Comple
     } 
     double start = getTime();
     for (int i = 0; i < numIter; i++) {
-        matmulAVX512_rowmajor(Areal, Aimag, r1, c1, Breal, Bimag, C);
+        matvecAVX512_rowmajor(Areal, Aimag, r1, c1, Breal, Bimag, C);
     }
     return timeSince(start);
 }
@@ -157,7 +157,7 @@ double runFloatColMajorBenchmark(const Complex_float* A, int r1, int c1, const C
     double start = getTime();
     for (int i = 0; i < numIter; i++) {
         
-        matmulAVXFloat_colmajor(Areal, Aimag, r1, c1, B, C);
+        matvecAVXFloat_colmajor(Areal, Aimag, r1, c1, B, C);
     }
     return timeSince(start);
 
@@ -184,7 +184,7 @@ double runColMajorBenchmark(const Complex_int16* A, int r1, int c1, const Comple
         *deinterleaveTime += timeSince(deinterleaveStart);
 
         double start = getTime();
-        matmulAVX512_colmajor(Areal, Aimag, r1, c1, B, C);
+        matvecAVX512_colmajor(Areal, Aimag, r1, c1, B, C);
         computeTime += timeSince(start);
     }
     return computeTime;
@@ -204,7 +204,7 @@ double runArmaBenchmark(const arma::cx_fmat& armaA, const arma::cx_fmat& armaB, 
 double runVCLBenchmark(Complex_float* A, int r1, int c1, Complex_float* B, Complex_float* C, int numIter) {
     double start = getTime();
     for (int i = 0; i < numIter; i++) {
-        matmulVCL(A, r1, c1, B, C);
+        matvecVCL(A, r1, c1, B, C);
     }
     return timeSince(start);
 }

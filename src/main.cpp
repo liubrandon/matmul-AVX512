@@ -1,4 +1,4 @@
-#include "bench_matmul.hpp"
+#include "bench_matvec.hpp"
 #include "bench_dot.hpp"
 #include <cassert>
 

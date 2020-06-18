@@ -92,8 +92,8 @@ void showUsageAndExit(char* progName) {
     fprintf(stderr, "Usage: %s [MxN] [-v] [numIter] [--uplink|--downlink]\n       "
                     "Benchmarks different implementations for matrix-vector multiply, running numIter times with an MxN matrix. (for MU-MIMO linear precoding)\n       "
                     "If you enable MKL verbose mode with -v numIter will be set to 1 and subsequent arguments will be ignored.\n       "
-                    "--uplink runs tests on matrices from size M x N to 1 x N\n       "
-                    "--downlink runs tests on matrices from size M x N to M x 1\n", progName);
+                    "--uplink runs benchmarks on matrices from size M x N to 1 x N\n       "
+                    "--downlink runs benchmarks on matrices from size M x N to M x 1\n", progName);
     exit(1);
 }
 
