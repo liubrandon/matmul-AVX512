@@ -1,5 +1,5 @@
 # matvec-AVX512
-Matrix multiplication that takes advantage of Intel's SIMD extension for operating on 512-bit vectors
+Fixed point, int16 complex matrix-vector multiplication taking advantage of Intel's SIMD extension for operating on 512-bit vectors.
 
 Usage: matvec [-v] [iterations]\
 	-v: Sets the environmental variable MKL_VERBOSE=1 to see the Intel MKL function calls under the hood.\
