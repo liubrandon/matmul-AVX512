@@ -15,8 +15,8 @@
 // Provides Intel Intrinsics
 #include "immintrin.h"
 // Agner Fog's Vector Class Library
-#include "vectorclass.h"
-#include "complexvec1.h"
+#include "../lib/vcl-2.01.02/vectorclass.h"
+#include "../lib/vcl-2.01.02/complexvec1.h"
 
 // A is a complex matrix stored in split format dimensions nrows x ncols and B is a complex vector stored in interleaved format with length ncols
 static inline void matvecAVX512_colmajor(const int16_t* Areal, const int16_t* Aimag, const int nrows, const int ncols, const Complex_int16* B, Complex_int16* C) {

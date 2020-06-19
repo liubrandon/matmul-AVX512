@@ -7,8 +7,8 @@
 // Provides Intel Intrinsics
 #include "immintrin.h"
 // Agner Fog's Vector Class Library
-#include "vectorclass.h"
-#include "complexvec1.h"
+#include "../lib/vcl-2.01.02/vectorclass.h"
+#include "../lib/vcl-2.01.02/complexvec1.h"
 // VOLK library
 #include <volk/build/include/volk/volk.h>
 
