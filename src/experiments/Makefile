@@ -1,6 +1,6 @@
 .PHONY: inv com clean com_example volk deinterleave_bench mkl
 mkl:
-	g++ -o mkl_bench cgemm_cgemv_bench.cpp -std=c++17 -march=native -Wl,--no-as-needed -larmadillo -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
+	g++ -g -o mkl_bench cgemm_cgemv_bench.cpp -std=c++17 -march=native -Wl,--no-as-needed -larmadillo -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
 deinterleave_bench:
 	g++ deinterleave_bench.cpp -o deinterleave_bench -std=c++17 -I/usr/local/include/volk/build/include/volk -L/usr/local/include/volk/build/lib/ -l:libvolk.so -Wl,--no-as-needed -march=native -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl -mavx512ifma -mavx512vbmi -mavx2 -O3
 volk:
@@ -13,4 +13,4 @@ com:
 com_example:
 	g++ -std=c++17 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl -march=native lu_inverse_example.cpp -o com_example 
 clean:
-	rm inv com
+	rm inv com 

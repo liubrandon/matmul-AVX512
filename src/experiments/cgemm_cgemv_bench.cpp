@@ -9,7 +9,7 @@
 #include "../timer.hpp"
 
 #define WARMUP 100
-#define NITER 100000
+#define NITER 1000000
 #define TOLERANCE 0.0001f
 
 #define RESET   "\033[0m" // Terminal color codes
@@ -54,16 +54,20 @@ double benchJITCGEMM(MKL_Complex8* a, MKL_Complex8* b, MKL_Complex8* c, MKL_INT 
     MKL_INT lda = m;
     MKL_INT ldb = k;
     MKL_INT ldc = m;
-    void* jitter;
     double start = getTime();
+    // Create a handle and generate GEMM kernel
+    void* jitter;
     mkl_jit_status_t status = mkl_jit_create_cgemm(&jitter, MKL_COL_MAJOR, MKL_NOTRANS, MKL_NOTRANS, m, 1, k, &alpha, lda, ldb, &beta, ldc);
     if (MKL_JIT_ERROR == status) {
         fprintf(stderr, "Error: insufficient memory to JIT and store the DGEMM kernel\n");
         exit(1);
     }
+    // Get kernel associated with handle
     cgemm_jit_kernel_t my_cgemm = mkl_jit_get_cgemm_ptr(jitter);
     for(int i = 0; i < numIter; i++)
-        my_cgemm(jitter, a, b, c);
+        my_cgemm(jitter, a, b, c); // Repeatedly execute the GEMM kernel
+    // Destroy the created handle/GEMM kernel
+    mkl_jit_destroy((void*)my_cgemm);
     return timeSince(start);
 }
 
@@ -100,7 +104,7 @@ void showUsageAndExit(char* progName) {
 typedef enum {
     BENCH_SINGLE,
     BENCH_UPLINK,  // (N x 64) * (64 x 1)
-    BENCH_DOWNLINK//  (64 x N) * (N x 1)
+    BENCH_DOWNLINK //  (64 x N) * (N x 1)
 } BENCH_MODE;
 
 std::vector<std::string> dimensions;
