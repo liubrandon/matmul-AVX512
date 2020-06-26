@@ -1,4 +1,6 @@
-.PHONY: inv com clean com_example volk deinterleave_bench mkl cgemv
+.PHONY: inv com clean com_example volk deinterleave_bench mkl cgemv fused
+fused:
+	g++ -o fused fused_bench.cpp -std=c++17 -march=native -O3
 cgemv:
 	g++ -g -save-temps -m64 -I${MKLROOT}/include -o cgemv cgemv.cpp -std=c++17 -march=native -Wl,--no-as-needed -larmadillo  -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group,--no-as-needed -lpthread -lm -ldl
 mkl: #https://software.intel.com/content/www/us/en/develop/articles/intel-mkl-link-line-advisor.html

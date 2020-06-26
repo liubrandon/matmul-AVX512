@@ -1,6 +1,6 @@
 #ifndef TIMER_HPP
 #define TIMER_HPP
-
+#include <time.h>
 // Returns current monotonic time in seconds
 static double getTime(void) {
     struct timespec tv;
