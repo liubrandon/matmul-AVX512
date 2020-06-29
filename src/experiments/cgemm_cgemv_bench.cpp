@@ -34,6 +34,17 @@ double benchCGEMV(MKL_Complex8* a, MKL_Complex8* x, MKL_Complex8* y, MKL_INT m, 
     return timeSince(start);
 }
 
+// m x n matrix
+double benchCGEMV_row(MKL_Complex8* a, MKL_Complex8* x, MKL_Complex8* y, MKL_INT m, MKL_INT n, int numIter) {
+    MKL_Complex8 alpha = {1, 0};
+    MKL_Complex8 beta = {0, 0};
+    MKL_INT lda = n;
+    double start = getTime();
+    for(int i = 0; i < numIter; i++)
+        cblas_cgemv(CblasRowMajor, CblasNoTrans, m, n, &alpha, a, lda, x, 1, &beta, y, 1);
+    return timeSince(start);
+}
+
 // m x k matrix
 double benchCGEMM(MKL_Complex8* a, MKL_Complex8* b, MKL_Complex8* c, MKL_INT m, MKL_INT k, int numIter) {
     MKL_Complex8 alpha = {1, 0};
@@ -71,6 +82,31 @@ double benchJITCGEMM(MKL_Complex8* a, MKL_Complex8* b, MKL_Complex8* c, MKL_INT 
     return timeSince(start);
 }
 
+// m x k matrix
+double benchJITCGEMM_row(MKL_Complex8* a, MKL_Complex8* b, MKL_Complex8* c, MKL_INT m, MKL_INT k, int numIter) {
+    if(numIter == 0) return 0.0;
+    MKL_Complex8 alpha = {1, 0};
+    MKL_Complex8 beta = {0, 0};
+    MKL_INT lda = k;
+    MKL_INT ldb = 1;
+    MKL_INT ldc = 1;
+    double start = getTime();
+    // Create a handle and generate GEMM kernel
+    void* jitter;
+    mkl_jit_status_t status = mkl_jit_create_cgemm(&jitter, MKL_ROW_MAJOR, MKL_NOTRANS, MKL_NOTRANS, m, 1, k, &alpha, lda, ldb, &beta, ldc);
+    if (MKL_JIT_ERROR == status) {
+        fprintf(stderr, "Error: insufficient memory to JIT and store the DGEMM kernel\n");
+        exit(1);
+    }
+    // Get kernel associated with handle
+    cgemm_jit_kernel_t my_cgemm = mkl_jit_get_cgemm_ptr(jitter);
+    for(int i = 0; i < numIter; i++)
+        my_cgemm(jitter, a, b, c); // Repeatedly execute the GEMM kernel
+    // Destroy the created handle/GEMM kernel
+    mkl_jit_destroy((void*)my_cgemm);
+    return timeSince(start);
+}
+
 MKL_Complex8 accum(MKL_Complex8* a, int size) {
     MKL_Complex8 ret = {0.0, 0.0};
     for(int i = 0; i < size; i++) {
@@ -84,9 +120,9 @@ bool cmpf(arma::cx_float a, MKL_Complex8 b, float epsilon = TOLERANCE) {
     return (fabs(a.real() - b.real) < epsilon) && (fabs(a.imag() - b.imag) < epsilon);
 }
 
-bool vectorsEqual(arma::cx_fmat& src, MKL_Complex8* a, MKL_Complex8* b, MKL_Complex8* c) {
+bool vectorsEqual(arma::cx_fmat& src, MKL_Complex8* a, MKL_Complex8* b, MKL_Complex8* c, MKL_Complex8* d, MKL_Complex8* e) {
     for(int i = 0; i < src.size(); i++) {
-        if(!(cmpf(src[i], a[i]) && cmpf(src[i], b[i]) && cmpf(src[i], c[i])))
+        if(!(cmpf(src[i], a[i]) && cmpf(src[i], b[i]) && cmpf(src[i], c[i]) && cmpf(src[i], d[i]) && cmpf(src[i], e[i])))
             return false;
     }
     return true;
@@ -108,19 +144,19 @@ typedef enum {
 } BENCH_MODE;
 
 std::vector<std::string> dimensions;
-std::vector<double> armaTimes, cgemvTimes, cgemmTimes, jitcgemmTimes;
+std::vector<double> armaTimes, cgemvTimes, cgemmTimes, jitcgemmTimes, cgemvTimes_row, jitcgemmTimes_row;
 void outputCSV() {
     std::ofstream outFile;
     outFile.open("results.csv");
-    outFile << "Dimensions,Armadillo cgemv,cgemv,cgemm,JIT cgemm,\n";
+    outFile << "Dimensions,Armadillo cgemv,cgemv,cgemv row major,cgemm,JIT cgemm,JIT cgemm row major\n";
     for(int i = 0; i < dimensions.size(); i++)
-        outFile << dimensions[i] << "," << armaTimes[i] << "," << cgemvTimes[i] << "," << cgemmTimes[i] << "," << jitcgemmTimes[i] << ",\n";
+        outFile << dimensions[i] << "," << armaTimes[i] << "," << cgemvTimes[i] << "," << cgemvTimes_row[i] << "," << cgemmTimes[i] << "," << jitcgemmTimes[i] << "," << jitcgemmTimes_row[i] << ",\n";
     outFile.close();
 }
 
 
 void runMKLBenchmarks(unsigned long warmup, unsigned long numIter, MKL_INT m, MKL_INT n, bool quiet = false) {
-    MKL_Complex8 *a, *x, *y, *a2, *b2, *c2, *a3, *b3, *c3;
+    MKL_Complex8 *a, *x, *y, *a2, *b2, *c2, *a3, *b3, *c3, *a4, *b4, *c4, *a5, *b5, *c5;
     arma::cx_fmat a1(m, n);
     arma::cx_fmat x1(n, 1);
     arma::cx_fmat y1(m, 1);
@@ -136,6 +172,14 @@ void runMKLBenchmarks(unsigned long warmup, unsigned long numIter, MKL_INT m, MK
     a3 = (MKL_Complex8*)mkl_calloc(m*n, sizeof(MKL_Complex8), 64);
     b3 = (MKL_Complex8*)mkl_calloc(n, sizeof(MKL_Complex8), 64);
     c3 = (MKL_Complex8*)mkl_calloc(m, sizeof(MKL_Complex8), 64);
+    // jit_cgemm row major
+    a4 = (MKL_Complex8*)mkl_calloc(m*n, sizeof(MKL_Complex8), 64);
+    b4 = (MKL_Complex8*)mkl_calloc(n, sizeof(MKL_Complex8), 64);
+    c4 = (MKL_Complex8*)mkl_calloc(m, sizeof(MKL_Complex8), 64);
+    // cgemm row major
+    a5 = (MKL_Complex8*)mkl_calloc(m*n, sizeof(MKL_Complex8), 64);
+    b5 = (MKL_Complex8*)mkl_calloc(n, sizeof(MKL_Complex8), 64);
+    c5 = (MKL_Complex8*)mkl_calloc(m, sizeof(MKL_Complex8), 64);
     assert((a!=NULL)&&(x!=NULL)&&(y!=NULL)&&
            (a2!=NULL)&&(b2!=NULL)&&(c2!=NULL)&&
            (a3!=NULL)&&(b3!=NULL)&&(c3!=NULL)); // make sure mkl_calloc didn't fail
@@ -152,50 +196,69 @@ void runMKLBenchmarks(unsigned long warmup, unsigned long numIter, MKL_INT m, MK
         x1[i] = {x[i].real, x[i].imag};
         b2[i] = {x[i].real, x[i].imag};
         b3[i] = {x[i].real, x[i].imag};
+        b4[i] = {x[i].real, x[i].imag};
+        b5[i] = {x[i].real, x[i].imag};
+    }
+    for(int i = 0; i < m; i++) {
+        for(int j = 0; j < n; j++) {
+            a4[i*n+j] = a[j*m+i];
+            a5[i*n+j] = a[j*m+i];
+        }
     }
     // Warmup before benching
     benchArma(a1, x1, y1, m, n, warmup);
     benchCGEMV(a, x, y, m, n, warmup);
-    benchCGEMM(a, x, y, m, n, warmup);
-    benchJITCGEMM(a, x, y, m, n, warmup);
+    benchCGEMM(a2, b2, c2, m, n, warmup);
+    benchJITCGEMM(a3, b3, c3, m, n, warmup);
+    benchJITCGEMM_row(a4, b4, c4, m, n, warmup);
+    benchCGEMV_row(a5, b5, c5, m, n, warmup);
 
     // Bench MKL and output average time per iteration
     double armaTime = benchArma(a1, x1, y1, m, n, numIter);
     double cgemvTime = benchCGEMV(a, x, y, m, n, numIter);
     double cgemmTime = benchCGEMM(a2, b2, c2, m, n, numIter);
     double jitcgemmTime = benchJITCGEMM(a3, b3, c3, m, n, numIter);
+    double jitcgemmTime_row = benchJITCGEMM_row(a4, b4, c4, m, n, numIter);
+    double cgemvTime_row = benchCGEMV_row(a5, b5, c5, m, n, numIter);
     printf("\n        ---------- \n\n");
     printf("     %ld iterations, (%dx%d) * (%dx%d)\n", numIter, m, n, n, 1);
     printf("Armadillo cgemv: %.5f µs per iteration\n", armaTime/(double)numIter);
     printf("    cblas_cgemv: %.5f µs per iteration\n", cgemvTime/(double)numIter);
+    printf("cblas_cgemv_row: %.5f µs per iteration\n", cgemvTime_row/(double)numIter);
     printf("    cblas_cgemm: %.5f µs per iteration\n", cgemmTime/(double)numIter);
     printf("  mkl_jit_cgemm: %.5f µs per iteration\n", jitcgemmTime/(double)numIter);
+    printf("  jit_cgemm_row: %.5f µs per iteration\n", jitcgemmTime_row/(double)numIter);
 
     // Output JIT speed-up
     std::cout << "  " << BOLDGREEN << std::fixed << std::setprecision(2) << armaTime/jitcgemmTime << "x" << RESET << " Armadillo wrapped cgemv" << std::endl;
     std::cout << "  " << BOLDGREEN << std::fixed << std::setprecision(2) << cgemvTime/jitcgemmTime << "x" << RESET << " cgemv called directly" << std::endl;
-    // Assert resulting values are within TOLERANCE of each other
-    assert(vectorsEqual(y1, y, c2, c3));
     if(!quiet) {
         printf("Individual values are within %.4f of the results calculated by Armadillo\n", TOLERANCE);
         // Output sums of resulting vectors to make sure they're the same
         printf("\nAccumulation of resulting vectors\n");
         printf("Armadillo cgemv: (%.4f,%.4f)\n", arma::accu(y1).real(), arma::accu(y1).imag());
         printf("    cblas_cgemv: (%.4f,%.4f)\n", accum(y, m).real, accum(y, m).imag);
+        printf("cblas_cgemv_row: (%.4f,%.4f)\n", accum(c5, m).real, accum(c5, m).imag);
         printf("    cblas_cgemm: (%.4f,%.4f)\n", accum(c2, m).real, accum(c2, m).imag);
         printf("  mkl_jit_cgemm: (%.4f,%.4f)\n", accum(c3, m).real, accum(c3, m).imag);
+        printf("  jit_cgemm_row: (%.4f,%.4f)\n", accum(c4, m).real, accum(c4, m).imag);
     }
-
+    // Assert resulting values are within TOLERANCE of each other
+    assert(vectorsEqual(y1, y, c2, c3, c4, c5));
     // Save results in global vectors to later output as csv
     dimensions.push_back(std::to_string(m) + "x" + std::to_string(n));
     armaTimes.push_back(armaTime/(double)numIter);
     cgemvTimes.push_back(cgemvTime/(double)numIter);
+    cgemvTimes_row.push_back(cgemvTime_row/(double)numIter);
     cgemmTimes.push_back(cgemmTime/(double)numIter);
     jitcgemmTimes.push_back(jitcgemmTime/(double)numIter);
+    jitcgemmTimes_row.push_back(jitcgemmTime_row/(double)numIter);
 
     mkl_free(a); mkl_free(x); mkl_free(y);
     mkl_free(a2); mkl_free(b2); mkl_free(c2);
     mkl_free(a3); mkl_free(b3); mkl_free(c3);
+    mkl_free(a4); mkl_free(b4); mkl_free(c4);
+    mkl_free(a5); mkl_free(b5); mkl_free(c5);
 }
 
 

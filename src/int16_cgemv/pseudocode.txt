@@ -1,0 +1,26 @@
+int16 matrix-vector multiply pseudocode:
+for each row:
+	Complex_int16 accumulator = {0,0}
+	for each 16 complex number wide chunk of columns in the matrix (AVX512) matrix_512_slice
+		accumulator += dot512(matrix_512_slice, vector_512_slice) // corresponding vector_slice
+	if each 8 complex number wide chunk (AVX2) matrix_256_slice:
+		accumulator += dot256(matrix_256_slice, vector_256_slice)
+	if each 4 complex number wide chunk (SSE) matrix_128_slice
+		accumulator += dot128(matrix_128_slice, vector_128_slice)
+	if remaining cols:
+		accumulator += dot128(remaining_slice, remaining_slice)
+	c[row] = accumulator;
+
+
+dot512(vec1, vec2):
+	return hsum_complex_int16_avx512(complex_int16_multiply(vec1, vec2))
+
+complex_int16_multiply(a, b):
+	a_re = permute a
+	a_im = permute a
+	b_swap = permute b
+	c = mullo(a_im, b_swap)
+	mult = mullo(a_real, b)
+	addsub = mullo(c, alternating 1 and -1 vector)
+	res = add(mult, addsub)
+	return res
