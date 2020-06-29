@@ -54,3 +54,11 @@ src/experiments/deinterleave_bench
 src/experiments/deinterleave.asm
 src/experiments/mkl_bench
 src/experiments/results.csv
+src/experiments/cgemv.asm
+src/experiments/fused.asm
+
+*.asm
+*.ii
+cgemv
+src/matvec_only
+src/experiments/cgemv.csv

@@ -19,7 +19,7 @@
 #include "../lib/vcl-2.01.02/complexvec1.h"
 
 // A is a complex matrix stored in split format dimensions nrows x ncols and B is a complex vector stored in interleaved format with length ncols
-static inline void matvecAVX512_colmajor(const int16_t* Areal, const int16_t* Aimag, const int nrows, const int ncols, const Complex_int16* B, Complex_int16* C) {
+void matvecAVX512_colmajor(const int16_t* Areal, const int16_t* Aimag, const int nrows, const int ncols, const Complex_int16* B, Complex_int16* C) {
     int row = 0;
     if(nrows >= 32) { // If there are at least 32 rows, use as many 512 bit vectors of 32 elements as you can first
         for( ; row < nrows && nrows-row >=32 ; row+=32) { // Operate on a strip of data 32 rows wide at a time (__m512i)
