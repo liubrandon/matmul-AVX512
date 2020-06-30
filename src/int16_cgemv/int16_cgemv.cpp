@@ -88,62 +88,92 @@ static inline Complex_int16 dot512(__m512i a, __m512i b) {
 }
 
 // int16_cgemv
-void int16_cgemv(const Complex_int16* mat, int16_t nrows, int16_t ncols, const Complex_int16* vec, Complex_int16* res) {
-    for(int16_t row = 0; row < nrows; row++) {
+void int16_cgemv_row(const Complex_int16* mat, int nrows, int ncols, const Complex_int16* vec, Complex_int16* res) {
+    for(int row = 0; row < nrows; row++) {
         Complex_int16 accumulator = {0,0};
-        int counter = 0;
-        for(int16_t col = 0; col < ncols; col+=16) {
+        for(int col = 0; col < ncols; col+=16) {
             // std::cout << "Mat slice and vec slice: " << std::endl;
             // print_m512i(*(__m512i*)(&mat[row*nrows+col]));
             // print_m512i(*(__m512i*)(&vec[col]));
-            accumulator += dot512(*(__m512i*)(&mat[row*nrows+col]), *(__m512i*)(&vec[col]));
+            accumulator += dot512(*(__m512i*)(&mat[row*ncols+col]), *(__m512i*)(&vec[col]));
         }
         res[row] = accumulator;
     }
 }
 
+// int16_cgemv
+void int16_cgemv_col(const Complex_int16* mat, int nrows, int ncols, const Complex_int16* vec, Complex_int16* res) {
+    for(int row = 0; row < nrows; row++) {
+        __m512i colSlice = *(__m512i*)(&mat[row]);
+        __m512i broad = _mm512_mask_set1_epi16(_mm512_set1_epi16(8), 0xAAAAAAAA, 9);
+        print_m512i(broad);
+        exit(0);
+    }
+}
+
 // m x n matrix
-double benchCGEMV(MKL_Complex8* mkl_mat, MKL_Complex8* mkl_vec, MKL_Complex8* mkl_res, MKL_INT nrows, MKL_INT ncols, int numIter) {
+double benchCGEMV_row(MKL_Complex8* mkl_mat, MKL_Complex8* mkl_vec, MKL_Complex8* mkl_res, MKL_INT nrows, MKL_INT ncols, int numIter) {
     MKL_Complex8 alpha = {1, 0};
     MKL_Complex8 beta = {0, 0};
-    MKL_INT lda = nrows;
+    MKL_INT lda = ncols;
     double start = getTime();
     for(int i = 0; i < numIter; i++)
         cblas_cgemv(CblasRowMajor, CblasNoTrans, nrows, ncols, &alpha, mkl_mat, lda, mkl_vec, 1, &beta, mkl_res, 1);
     return timeSince(start);
 }
 
-double benchInt16(Complex_int16* mat, Complex_int16* vec, Complex_int16* res, int16_t nrows, int16_t ncols) {
-    
-}
-
-int main() {
-    MKL_Complex8 *mkl_mat, *mkl_vec, *mkl_res;
-    int16_t nrows = 16;
-    int16_t ncols = 16;
-    Complex_int16 mat[nrows * ncols] __attribute__((aligned(64))); 
-    Complex_int16 vec[ncols] __attribute__((aligned(64)));         // B is a vector
-    Complex_int16 res[nrows] __attribute__((aligned(64)));         // C is the resulting vector
-    memset(res, 0, ncols*sizeof(Complex_int16));
-    mkl_mat = (MKL_Complex8*)mkl_calloc(nrows*ncols, sizeof(MKL_Complex8), 64);
-    mkl_vec = (MKL_Complex8*)mkl_calloc(ncols, sizeof(MKL_Complex8), 64);
-    mkl_res = (MKL_Complex8*)mkl_calloc(nrows, sizeof(MKL_Complex8), 64);
-    for(int16_t i = 0; i < nrows*ncols; i++) {
-        mat[i] = {static_cast<int16_t>((rand()%30)+1), static_cast<int16_t>((rand()%30)+1)};
-        mkl_mat[i] = {static_cast<float>(mat[i].real),static_cast<float>(mat[i].imag)};
-    }
-    for(int16_t i = 0; i < ncols; i++) {
-        vec[i] = {static_cast<int16_t>((rand()%30)+1), static_cast<int16_t>((rand()%30)+1)};
-        mkl_vec[i] = {static_cast<float>(vec[i].real), static_cast<float>(vec[i].imag)};
-    }
+// m x n matrix
+double benchCGEMV_col(MKL_Complex8* mkl_mat, MKL_Complex8* mkl_vec, MKL_Complex8* mkl_res, MKL_INT nrows, MKL_INT ncols, int numIter) {
     MKL_Complex8 alpha = {1, 0};
     MKL_Complex8 beta = {0, 0};
     MKL_INT lda = nrows;
-    cblas_cgemv(CblasRowMajor, CblasNoTrans, nrows, ncols, &alpha, mkl_mat, lda, mkl_vec, 1, &beta, mkl_res, 1);
-    int16_cgemv(mat, nrows, ncols, vec, res);
+    double start = getTime();
+    for(int i = 0; i < numIter; i++)
+        cblas_cgemv(CblasColMajor, CblasNoTrans, nrows, ncols, &alpha, mkl_mat, lda, mkl_vec, 1, &beta, mkl_res, 1);
+    return timeSince(start);
+}
+
+double benchInt16_row(Complex_int16* mat, Complex_int16* vec, Complex_int16* res, int nrows, int ncols, int numIter) {
+    double start = getTime();
+    for(int i = 0; i < numIter; i++)
+        int16_cgemv_row(mat, nrows, ncols, vec, res);
+    return timeSince(start);
+}
+
+int main() {
+    srand(time(0));
+    MKL_Complex8 *mkl_mat, *mkl_vec, *mkl_res;
+    int nrows = 64;
+    int ncols = 16;
+    Complex_int16 mat[nrows * ncols] __attribute__((aligned(64))); 
+    Complex_int16 vec[ncols] __attribute__((aligned(64)));         // B is a vector
+    Complex_int16 res[nrows] __attribute__((aligned(64)));         // C is the resulting vector
+    for(int i = 0; i < nrows; i++) {
+        res[i] = {0, 0};
+    }
+    mkl_mat = (MKL_Complex8*)mkl_calloc(nrows*ncols, sizeof(MKL_Complex8), 64);
+    mkl_vec = (MKL_Complex8*)mkl_calloc(ncols, sizeof(MKL_Complex8), 64);
+    mkl_res = (MKL_Complex8*)mkl_calloc(nrows, sizeof(MKL_Complex8), 64);
+    for(int i = 0; i < nrows*ncols; i++) {
+        mat[i] = {static_cast<int16_t>((rand()%12)+1), static_cast<int16_t>((rand()%12)+1)};
+        mkl_mat[i] = {static_cast<float>(mat[i].real),static_cast<float>(mat[i].imag)};
+    }
+    for(int i = 0; i < ncols; i++) {
+        vec[i] = {static_cast<int16_t>((rand()%12)+1), static_cast<int16_t>((rand()%12)+1)};
+        mkl_vec[i] = {static_cast<float>(vec[i].real), static_cast<float>(vec[i].imag)};
+    }
+    long numIter = 100000;
+    int16_cgemv_col(mat, nrows, ncols, vec, res);
+    double rowCGEMV = benchCGEMV_row(mkl_mat, mkl_vec, mkl_res, nrows, ncols, numIter);
+    double rowInt16 = benchInt16_row(mat, vec, res, nrows, ncols, numIter);
+    printf("\n        ---------- \n\n");
+    printf("     %ld iterations, (%dx%d) * (%dx%d)\n", numIter, nrows, ncols, ncols, 1);
+    printf("row major cgemv: %.5f µs per iteration\n", rowCGEMV/(double)numIter);
+    printf("row major int16: %.5f µs per iteration\n", rowInt16/(double)numIter);
     for(int i = 0; i < nrows; i++) std::cout << res[i];
     std::cout << std::endl;
     for(int i = 0; i < nrows; i++) std::cout << "(" << mkl_res[i].real << "," << mkl_res[i].imag << ")";
     std::cout << std::endl;
+    mkl_free(mkl_mat); mkl_free(mkl_vec); mkl_free(mkl_res);
     return 0;
 }

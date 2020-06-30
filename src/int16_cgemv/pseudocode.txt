@@ -1,4 +1,4 @@
-int16 matrix-vector multiply pseudocode:
+row major int16 matrix-vector multiply pseudocode:
 for each row:
 	Complex_int16 accumulator = {0,0}
 	for each 16 complex number wide chunk of columns in the matrix (AVX512) matrix_512_slice
@@ -24,3 +24,7 @@ complex_int16_multiply(a, b):
 	addsub = mullo(c, alternating 1 and -1 vector)
 	res = add(mult, addsub)
 	return res
+
+
+column major pseudocode:
+	
