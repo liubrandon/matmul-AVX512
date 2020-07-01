@@ -62,3 +62,7 @@ src/experiments/fused.asm
 cgemv
 src/matvec_only
 src/experiments/cgemv.csv
+src/experiments/jit
+src/int16_cgemv/cgemv16
+src/int16_cgemv/cgemv16
+src/int16_cgemv/cgemv16

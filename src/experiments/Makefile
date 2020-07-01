@@ -1,4 +1,6 @@
-.PHONY: inv com clean com_example volk deinterleave_bench mkl cgemv fused
+.PHONY: inv com clean com_example volk deinterleave_bench mkl cgemv fused jit
+jit:
+	g++ -m64 -I${MKLROOT}/include -o jit jit_cgemm.cpp -std=c++17 -march=native -Wl,--no-as-needed -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group,--no-as-needed -lpthread -lm -ldl
 fused:
 	g++ -o fused fused_bench.cpp -std=c++17 -march=native -O0
 cgemv:

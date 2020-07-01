@@ -103,11 +103,44 @@ void int16_cgemv_row(const Complex_int16* mat, int nrows, int ncols, const Compl
 
 // int16_cgemv
 void int16_cgemv_col(const Complex_int16* mat, int nrows, int ncols, const Complex_int16* vec, Complex_int16* res) {
-    for(int row = 0; row < nrows; row++) {
-        __m512i colSlice = *(__m512i*)(&mat[row]);
-        __m512i broad = _mm512_mask_set1_epi16(_mm512_set1_epi16(8), 0xAAAAAAAA, 9);
-        print_m512i(broad);
-        exit(0);
+    int row = 0;
+    if(nrows >= 32) { 
+        for( ; row < nrows && nrows-row >=16; row+=32) {
+            __m512i res1 = _mm512_set1_epi16(0); 
+            __m512i res2 = _mm512_set1_epi16(0);
+
+            for(int col = 0; col < ncols; col++) {
+                // operate on 128 bytes at a time
+                __m512i mat1 = _mm512_loadu_si512((const void*)&mat[col*nrows+row]);
+                __m512i mat2 = _mm512_loadu_si512((const void*)&mat[col*nrows+row+16]);
+
+                __m512i vecSlice = _mm512_mask_set1_epi16(_mm512_set1_epi16(vec[col].real), 0xAAAAAAAA, vec[col].imag);
+                res1 = _mm512_add_epi16(res1,_mm512_myComplexMult_epi16(mat1,vecSlice));
+                res2 = _mm512_add_epi16(res2,_mm512_myComplexMult_epi16(mat2,vecSlice));
+
+            }
+            Complex_int16* resArr1 = (Complex_int16*)(&res1);
+            Complex_int16* resArr2 = (Complex_int16*)(&res2);
+
+            for(int i = 0; i < 16; i++) res[row+i] = resArr1[i];
+            for(int i = 0; i < 16; i++) res[row+16+i] = resArr2[i];
+        }
+    }
+    if(nrows >= 16) {
+        for( ; row < nrows && nrows-row >= 16; row+=16) {
+            __m512i resultAccumulator = _mm512_set1_epi16(0);
+            for(int col = 0; col < ncols; col++) {
+                // Complex multiply in interleaved format and accumulate
+                __m512i matSlice = _mm512_loadu_si512((const void*)&mat[col*nrows+row]);
+                __m512i vecSlice = _mm512_mask_set1_epi16(_mm512_set1_epi16(vec[col].real), 0xAAAAAAAA, vec[col].imag);
+                resultAccumulator = _mm512_add_epi16(resultAccumulator,
+                                                     _mm512_myComplexMult_epi16(matSlice,vecSlice));
+            }
+            Complex_int16* resultArray = (Complex_int16*)(&resultAccumulator);
+            for(int i = 0; i < 16; i++) {
+                res[row+i] = resultArray[i];
+            }
+        }
     }
 }
 
@@ -140,6 +173,13 @@ double benchInt16_row(Complex_int16* mat, Complex_int16* vec, Complex_int16* res
     return timeSince(start);
 }
 
+double benchInt16_col(Complex_int16* mat, Complex_int16* vec, Complex_int16* res, int nrows, int ncols, int numIter) {
+    double start = getTime();
+    for(int i = 0; i < numIter; i++)
+        int16_cgemv_col(mat, nrows, ncols, vec, res);
+    return timeSince(start);
+}
+
 int main() {
     srand(time(0));
     MKL_Complex8 *mkl_mat, *mkl_vec, *mkl_res;
@@ -162,16 +202,15 @@ int main() {
         vec[i] = {static_cast<int16_t>((rand()%12)+1), static_cast<int16_t>((rand()%12)+1)};
         mkl_vec[i] = {static_cast<float>(vec[i].real), static_cast<float>(vec[i].imag)};
     }
-    long numIter = 100000;
-    int16_cgemv_col(mat, nrows, ncols, vec, res);
-    double rowCGEMV = benchCGEMV_row(mkl_mat, mkl_vec, mkl_res, nrows, ncols, numIter);
-    double rowInt16 = benchInt16_row(mat, vec, res, nrows, ncols, numIter);
+    long numIter = 1;
+    //double cgemvTime = benchCGEMV_col(mkl_mat, mkl_vec, mkl_res, nrows, ncols, numIter);
+    double int16Time = benchInt16_col(mat, vec, res, nrows, ncols, numIter);
     printf("\n        ---------- \n\n");
     printf("     %ld iterations, (%dx%d) * (%dx%d)\n", numIter, nrows, ncols, ncols, 1);
-    printf("row major cgemv: %.5f µs per iteration\n", rowCGEMV/(double)numIter);
-    printf("row major int16: %.5f µs per iteration\n", rowInt16/(double)numIter);
-    for(int i = 0; i < nrows; i++) std::cout << res[i];
-    std::cout << std::endl;
+    //printf("cgemv: %.5f µs per iteration\n", cgemvTime/(double)numIter);
+    printf("int16: %.5f µs per iteration\n", int16Time/(double)numIter);
+    // for(int i = 0; i < nrows; i++) std::cout << res[i];
+    // std::cout << std::endl;
     for(int i = 0; i < nrows; i++) std::cout << "(" << mkl_res[i].real << "," << mkl_res[i].imag << ")";
     std::cout << std::endl;
     mkl_free(mkl_mat); mkl_free(mkl_vec); mkl_free(mkl_res);
