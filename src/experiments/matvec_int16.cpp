@@ -89,25 +89,157 @@ const __m512i subAdd = _mm512_loadu_si512((const void*)temp1);
 void matvecInt16_16x16(const Complex_int16* mat, const Complex_int16* vec, Complex_int16* res) {
     __m512i a_b, c_c, d_d, ac_bc, ad_bd, bd_ad, minus_bd_ad;
     __m512i ac_bc_accu, ad_bd_accu, col_res;
+    Complex_int16 val;
     ac_bc_accu = _mm512_set1_epi16(0);
     ad_bd_accu = _mm512_set1_epi16(0);
-    for(int c = 0; c < 16; c++) {
-        // Load vec value
-        Complex_int16 val = vec[c];
+    // for(int c = 0; c < 16; c++) {
+    //     // Load vec value
+    //     Complex_int16 val = vec[c];
 
-        // Load column slice (in this case where K = 16 a whole column fits in one vector)
-        a_b = _mm512_loadu_si512((const void*)&mat[c*16]);
+    //     // Load column slice (in this case where K = 16 a whole column fits in one vector)
+    //     a_b = _mm512_loadu_si512((const void*)&mat[c*16]);
 
-        // Multiply accumulate ac_bc
+    //     // Load corresponding c and d from memory and broadcast to a whole vector
+    //     c_c = _mm512_set1_epi16(val.real);
+    //     d_d = _mm512_set1_epi16(val.imag);
+
+    //     // Multiply accumulate ac_bc
+    //     ac_bc = _mm512_mullo_epi16(a_b, c_c);
+    //     ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+
+    //     // Multiply accumulate ad_bd
+    //     ad_bd = _mm512_mullo_epi16(a_b, d_d);
+    //     ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+    // }
+        val = vec[0];
+        a_b = _mm512_loadu_si512((const void*)&mat[0]);
         c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
         ac_bc = _mm512_mullo_epi16(a_b, c_c);
         ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
-
-        // Multiply accumulate ad_bd
-        d_d = _mm512_set1_epi16(val.imag);
         ad_bd = _mm512_mullo_epi16(a_b, d_d);
         ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
-    }
+        val = vec[1];
+        a_b = _mm512_loadu_si512((const void*)&mat[1*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[2];
+        a_b = _mm512_loadu_si512((const void*)&mat[2*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[3];
+        a_b = _mm512_loadu_si512((const void*)&mat[3*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[4];
+        a_b = _mm512_loadu_si512((const void*)&mat[4*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[5];
+        a_b = _mm512_loadu_si512((const void*)&mat[5*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[6];
+        a_b = _mm512_loadu_si512((const void*)&mat[6*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[7];
+        a_b = _mm512_loadu_si512((const void*)&mat[7*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[8];
+        a_b = _mm512_loadu_si512((const void*)&mat[8*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[9];
+        a_b = _mm512_loadu_si512((const void*)&mat[9*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[10];
+        a_b = _mm512_loadu_si512((const void*)&mat[10*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[11];
+        a_b = _mm512_loadu_si512((const void*)&mat[11*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[12];
+        a_b = _mm512_loadu_si512((const void*)&mat[12*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[13];
+        a_b = _mm512_loadu_si512((const void*)&mat[13*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[14];
+        a_b = _mm512_loadu_si512((const void*)&mat[14*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        val = vec[15];
+        a_b = _mm512_loadu_si512((const void*)&mat[15*16]);
+        c_c = _mm512_set1_epi16(val.real);
+        d_d = _mm512_set1_epi16(val.imag);
+        ac_bc = _mm512_mullo_epi16(a_b, c_c);
+        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
+        ad_bd = _mm512_mullo_epi16(a_b, d_d);
+        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+        
     // Swap even and odd in ad_bd
     bd_ad = _mm512_shuffle_epi8(ad_bd_accu, swapPairs); // Much lower latency than permutexvar_epi16
 
@@ -121,7 +253,7 @@ void matvecInt16_16x16(const Complex_int16* mat, const Complex_int16* vec, Compl
 
 void matvecInt16(const Complex_int16* mat, int m, int k, const Complex_int16* vec, Complex_int16* res) {
     if(m == 16 && k == 16)
-        matvecInt16_16x16(mat, vec, res);
+        matvecInt16(mat, m, k, vec, res);
     else {
         fprintf(stderr, "Unsupported dimensions.\n");
         exit(1);
