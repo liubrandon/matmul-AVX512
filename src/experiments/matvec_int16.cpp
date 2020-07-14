@@ -1,6 +1,6 @@
 #include <iostream>
 #include <complex>
-#include "immintrin.h"
+#include <immintrin.h>
 #include <iomanip>
 #include <stdlib.h>
 #include <string.h>
@@ -9,6 +9,7 @@
 #include <Zydis/Zydis.h>
 #include <fstream>
 
+#define COMPILER_BARRIER() asm volatile("" ::: "memory");
 struct Complex_float {
     float real;
     float imag;
@@ -86,6 +87,15 @@ void print_m512i(__m512i v) {
     std::cout << std::endl;
 }
 
+void print_m512i_epi32(__m512i v) {
+    int32_t* val = (int32_t*)&v;
+    std::cout << "__m512i: ";
+    for(int i = 0; i < 16; i+=2) {
+        std::cout << "(" << std::setw(3) << val[i] << "," << std::setw(3) << val[i+1] << "), ";
+    }
+    std::cout << std::endl;
+}
+
 void print_m512(__m512 v) {
     float* val = (float*)&v;
     std::cout << "__m512 : ";
@@ -98,42 +108,217 @@ void print_m512(__m512 v) {
 static const int8_t temp[64] = {2,3,0,1,6,7,4,5,10,11,8,9,14,15,12,13,18,19,16,17,22,23,20,21,26,27,24,25,30,31,28,29,34,35,
                                 32,33,38,39,36,37,42,43,40,41,46,47,44,45,50,51,48,49,54,55,52,53,58,59,56,57,62,63,60,61};
 const __m512i swapPairs = _mm512_loadu_si512((const void*)temp);
-static const int16_t temp1[32] = {-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1};
-const __m512i subAdd = _mm512_loadu_si512((const void*)temp1);
+static const int16_t temp1[32] = {1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1};
+const __m512i addSub1 = _mm512_loadu_si512((const void*)temp1);
 void matvecInt16_16x16(const Complex_int16* mat, const Complex_int16* vec, Complex_int16* res) {
-    __m512i a_b, c_c, d_d, ac_bc, ad_bd, bd_ad, minus_bd_ad;
-    __m512i ac_bc_accu, ad_bd_accu, col_res;
-    Complex_int16 val;
-    ac_bc_accu = _mm512_set1_epi16(0);
-    ad_bd_accu = _mm512_set1_epi16(0);
-    for(int c = 0; c < 16; c++) {
-        // Load vec value
-        Complex_int16 val = vec[c];
+    __m512i a_b, d_c, c_minus_d, ac_bc, ad_bd, bd_ad, minus_bd_ad;
+    __m512i real_res, imag_res, vec_swapped, final_res, imag_res_shifted;
+    Complex_int16* vec_swapped_arr;
+    vec_swapped = _mm512_shuffle_epi8(_mm512_load_si512((const void*)vec), swapPairs);
+    COMPILER_BARRIER();
+    vec_swapped_arr = (Complex_int16*)&vec_swapped;
 
-        // Load column slice (in this case where K = 16 a whole column fits in one vector)
-        a_b = _mm512_loadu_si512((const void*)&mat[c*16]);
-
-        // Load corresponding c and d from memory and broadcast to a whole vector
-        c_c = _mm512_set1_epi16(val.real);
-        d_d = _mm512_set1_epi16(val.imag);
-
-        // Multiply accumulate ac_bc
-        ac_bc = _mm512_mullo_epi16(a_b, c_c);
-        ac_bc_accu = _mm512_add_epi16(ac_bc_accu, ac_bc);
-
-        // Multiply accumulate ad_bd
-        ad_bd = _mm512_mullo_epi16(a_b, d_d);
-        ad_bd_accu = _mm512_add_epi16(ad_bd_accu, ad_bd);
+    a_b = _mm512_load_si512((const void*)&mat[0]);
+    d_c = _mm512_set1_epi32(*(int32_t*)&vec_swapped_arr[0]);
+    c_minus_d = _mm512_mullo_epi16(addSub1, _mm512_set1_epi32(*(int32_t*)&vec[0]));
+    real_res = _mm512_madd_epi16(a_b, c_minus_d);
+    imag_res = _mm512_madd_epi16(a_b, d_c);
+    for(int c = 1; c < 16; c++) {
+        a_b = _mm512_load_si512((const void*)&mat[c*16]);
+        d_c = _mm512_set1_epi32(*(int32_t*)&vec_swapped_arr[c]);
+        c_minus_d = _mm512_mullo_epi16(addSub1, _mm512_set1_epi32(*(int32_t*)&vec[c]));
+        real_res = _mm512_dpwssds_epi32(real_res, a_b, c_minus_d);
+        imag_res = _mm512_dpwssds_epi32(imag_res, a_b, d_c);
     }
-    // Swap even and odd in ad_bd
-    bd_ad = _mm512_shuffle_epi8(ad_bd_accu, swapPairs); // Much lower latency than permutexvar_epi16
+    // I thought this would be faster but nah
+    // imag_res_shifted = _mm512_slli_epi32(imag_res, 16);
+    // final_res = _mm512_mask_blend_epi16(0xAAAAAAAA, real_res, imag_res_shifted);
+    // _mm512_storeu_si512(res, final_res);
+    _mm512_mask_storeu_epi16((void*)(res), 0x55555555, real_res);
+    COMPILER_BARRIER(); // Not sure if necessary
+    _mm512_mask_storeu_epi16((void*)((uintptr_t)res+2), 0x55555555, imag_res);
+}
 
-    // Fused negate multiply add -> simplified to multiply, add
-    minus_bd_ad = _mm512_mullo_epi16(bd_ad, subAdd);
-    col_res = _mm512_add_epi16(ac_bc_accu, minus_bd_ad);
+void matvecInt16_32x16(const Complex_int16* mat, const Complex_int16* vec, Complex_int16* res) {
+    __m512i a_b, d_c, c_minus_d, ac_bc, ad_bd, bd_ad, minus_bd_ad;
+    __m512i real_res, imag_res, vec_swapped;
+    __m512i a_b2;
+    __m512i real_res2, imag_res2;
+    Complex_int16* vec_swapped_arr;
+    vec_swapped = _mm512_shuffle_epi8(_mm512_load_si512((const void*)vec), swapPairs);
+    COMPILER_BARRIER();
+    vec_swapped_arr = (Complex_int16*)&vec_swapped;
     
-    // Store results in the array
-    _mm512_storeu_si512(res, col_res);
+    a_b = _mm512_load_si512((const void*)&mat[0]);
+    a_b2 = _mm512_load_si512((const void*)&mat[16]);
+    d_c = _mm512_set1_epi32(*(int32_t*)&vec_swapped_arr[0]);
+    c_minus_d = _mm512_mullo_epi16(addSub1, _mm512_set1_epi32(*(int32_t*)&vec[0]));
+    real_res = _mm512_madd_epi16(a_b, c_minus_d);
+    imag_res = _mm512_madd_epi16(a_b, d_c);
+    real_res2 = _mm512_madd_epi16(a_b2, c_minus_d);
+    imag_res2 = _mm512_madd_epi16(a_b2, d_c);
+    for(int c = 1; c < 16; c++) {
+        a_b = _mm512_load_si512((const void*)&mat[c*32]);
+        a_b2 = _mm512_load_si512((const void*)&mat[c*32+16]);
+        d_c = _mm512_set1_epi32(*(int32_t*)&vec_swapped_arr[c]);
+        c_minus_d = _mm512_mullo_epi16(addSub1, _mm512_set1_epi32(*(int32_t*)&vec[c]));
+        real_res = _mm512_dpwssds_epi32(real_res, a_b, c_minus_d);
+        imag_res = _mm512_dpwssds_epi32(imag_res, a_b, d_c);
+        real_res2 = _mm512_dpwssds_epi32(real_res2, a_b2, c_minus_d);
+        imag_res2 = _mm512_dpwssds_epi32(imag_res2, a_b2, d_c);
+    }
+    _mm512_storeu_si512(res, real_res);
+    COMPILER_BARRIER();
+    _mm512_mask_storeu_epi16((void*)((uintptr_t)res+2), 0x55555555, imag_res);
+    _mm512_storeu_si512(res+16, real_res2);
+    COMPILER_BARRIER();
+    _mm512_mask_storeu_epi16((void*)((uintptr_t)(res+16)+2), 0x55555555, imag_res2);
+}
+
+void matvecInt16_64x16(const Complex_int16* mat, const Complex_int16* vec, Complex_int16* res) {
+    __m512i a_b, d_c, c_minus_d, ac_bc, ad_bd, bd_ad, minus_bd_ad;
+    __m512i real_res, imag_res, vec_swapped;
+    __m512i a_b2, a_b3, a_b4;
+    __m512i real_res2, imag_res2, real_res3, imag_res3, real_res4, imag_res4;
+    Complex_int16* vec_swapped_arr;
+    vec_swapped = _mm512_shuffle_epi8(_mm512_load_si512((const void*)vec), swapPairs);
+    COMPILER_BARRIER();
+    vec_swapped_arr = (Complex_int16*)&vec_swapped;
+    COMPILER_BARRIER();
+    
+    a_b = _mm512_load_si512((const void*)&mat[0]);
+    a_b2 = _mm512_load_si512((const void*)&mat[16]);
+    a_b3 = _mm512_load_si512((const void*)&mat[32]);
+    a_b4 = _mm512_load_si512((const void*)&mat[48]);
+    d_c = _mm512_set1_epi32(*(int32_t*)&vec_swapped_arr[0]);
+    c_minus_d = _mm512_mullo_epi16(addSub1, _mm512_set1_epi32(*(int32_t*)&vec[0]));
+    real_res = _mm512_madd_epi16(a_b, c_minus_d);
+    imag_res = _mm512_madd_epi16(a_b, d_c);
+    real_res2 = _mm512_madd_epi16(a_b2, c_minus_d);
+    imag_res2 = _mm512_madd_epi16(a_b2, d_c);
+    real_res3 = _mm512_madd_epi16(a_b3, c_minus_d);
+    imag_res3 = _mm512_madd_epi16(a_b3, d_c);
+    real_res4 = _mm512_madd_epi16(a_b4, c_minus_d);
+    imag_res4 = _mm512_madd_epi16(a_b4, d_c);
+    for(int c = 1; c < 16; c++) {
+        a_b = _mm512_load_si512((const void*)&mat[c*64]);
+        a_b2 = _mm512_load_si512((const void*)&mat[c*64+16]);
+        a_b3 = _mm512_load_si512((const void*)&mat[c*64+32]);
+        a_b4 = _mm512_load_si512((const void*)&mat[c*64+48]);
+        d_c = _mm512_set1_epi32(*(int32_t*)&vec_swapped_arr[c]);
+        c_minus_d = _mm512_mullo_epi16(addSub1, _mm512_set1_epi32(*(int32_t*)&vec[c]));
+        real_res = _mm512_dpwssds_epi32(real_res, a_b, c_minus_d);
+        imag_res = _mm512_dpwssds_epi32(imag_res, a_b, d_c);
+        real_res2 = _mm512_dpwssds_epi32(real_res2, a_b2, c_minus_d);
+        imag_res2 = _mm512_dpwssds_epi32(imag_res2, a_b2, d_c);
+        real_res3 = _mm512_dpwssds_epi32(real_res3, a_b3, c_minus_d);
+        imag_res3 = _mm512_dpwssds_epi32(imag_res3, a_b3, d_c);
+        real_res4 = _mm512_dpwssds_epi32(real_res4, a_b4, c_minus_d);
+        imag_res4 = _mm512_dpwssds_epi32(imag_res4, a_b4, d_c);
+    }
+
+    _mm512_storeu_si512(res, real_res);
+    COMPILER_BARRIER();
+    _mm512_mask_storeu_epi16((void*)((uintptr_t)res+2), 0x55555555, imag_res);
+
+
+    _mm512_storeu_si512(res, _mm512_mask_blend_epi16(0xAAAAAAAA, real_res, _mm512_slli_epi32(imag_res, 16)));
+    _mm512_storeu_si512((void*)(res+16), _mm512_mask_blend_epi16(0xAAAAAAAA, real_res2, _mm512_slli_epi32(imag_res2, 16)));
+    _mm512_storeu_si512((void*)(res+32), _mm512_mask_blend_epi16(0xAAAAAAAA, real_res3, _mm512_slli_epi32(imag_res3, 16)));
+    _mm512_storeu_si512((void*)(res+48), _mm512_mask_blend_epi16(0xAAAAAAAA, real_res4, _mm512_slli_epi32(imag_res4, 16)));
+}
+
+// Not working
+void matvecInt16_32x32(const Complex_int16* mat, const Complex_int16* vec, Complex_int16* res) {
+    __m512i a_b, d_c, c_minus_d, ac_bc, ad_bd, bd_ad, minus_bd_ad;
+    __m512i real_res, imag_res, vec_swapped;
+    __m512i a_b2;
+    __m512i real_res2, imag_res2, vec_swapped2;
+    Complex_int16* vec_swapped_arr;
+    Complex_int16* vec_swapped_arr2;
+    vec_swapped = _mm512_shuffle_epi8(_mm512_load_si512((const void*)vec), swapPairs);
+    COMPILER_BARRIER();
+    vec_swapped_arr = (Complex_int16*)&vec_swapped;
+    COMPILER_BARRIER();
+    vec_swapped2 = _mm512_shuffle_epi8(_mm512_load_si512((const void*)&vec[16]), swapPairs);
+    COMPILER_BARRIER();
+    vec_swapped_arr2 = (Complex_int16*)&vec_swapped2;
+    COMPILER_BARRIER();
+    
+    a_b = _mm512_load_si512((const void*)&mat[0]);
+    a_b2 = _mm512_load_si512((const void*)&mat[16]);
+    d_c = _mm512_set1_epi32(*(int32_t*)&vec_swapped_arr[0]);
+    c_minus_d = _mm512_mullo_epi16(addSub1, _mm512_set1_epi32(*(int32_t*)&vec[0]));
+    real_res = _mm512_madd_epi16(a_b, c_minus_d);
+    imag_res = _mm512_madd_epi16(a_b, d_c);
+    real_res2 = _mm512_madd_epi16(a_b2, c_minus_d);
+    imag_res2 = _mm512_madd_epi16(a_b2, d_c);
+    for(int c = 1; c < 16; c++) {
+        a_b = _mm512_load_si512((const void*)&mat[c*32]);
+        a_b2 = _mm512_load_si512((const void*)&mat[c*32+16]);
+        d_c = _mm512_set1_epi32(*(int32_t*)&vec_swapped_arr[c]);
+        c_minus_d = _mm512_mullo_epi16(addSub1, _mm512_set1_epi32(*(int32_t*)&vec[c]));
+        real_res = _mm512_dpwssds_epi32(real_res, a_b, c_minus_d);
+        imag_res = _mm512_dpwssds_epi32(imag_res, a_b, d_c);
+        real_res2 = _mm512_dpwssds_epi32(real_res2, a_b2, c_minus_d);
+        imag_res2 = _mm512_dpwssds_epi32(imag_res2, a_b2, d_c);
+    }
+    for(int c = 16; c < 32; c++) {
+        a_b = _mm512_load_si512((const void*)&mat[c*32]);
+        a_b2 = _mm512_load_si512((const void*)&mat[c*32+16]);
+        d_c = _mm512_set1_epi32(*(int32_t*)&vec_swapped_arr2[c-16]);
+        c_minus_d = _mm512_mullo_epi16(addSub1, _mm512_set1_epi32(*(int32_t*)&vec[c]));
+        real_res = _mm512_dpwssds_epi32(real_res, a_b, c_minus_d);
+        imag_res = _mm512_dpwssds_epi32(imag_res, a_b, d_c);
+        real_res2 = _mm512_dpwssds_epi32(real_res2, a_b2, c_minus_d);
+        imag_res2 = _mm512_dpwssds_epi32(imag_res2, a_b2, d_c);
+    }
+    _mm512_storeu_si512(res, real_res);
+    _mm512_mask_storeu_epi16((void*)((uintptr_t)res+2), 0x55555555, imag_res);
+    _mm512_storeu_si512(res+16, real_res2);
+    _mm512_mask_storeu_epi16((void*)((uintptr_t)(res+16)+2), 0x55555555, imag_res2);
+}
+
+// Not working
+void matvecInt16_16x32(const Complex_int16* mat, const Complex_int16* vec, Complex_int16* res) {
+    __m512i a_b, d_c, c_minus_d, ac_bc, ad_bd, bd_ad, minus_bd_ad;
+    __m512i real_res, imag_res, vec_swapped;
+    __m512i a_b2;
+    __m512i real_res2, imag_res2, vec_swapped2;
+    Complex_int16* vec_swapped_arr;
+    Complex_int16* vec_swapped_arr2;
+    vec_swapped = _mm512_shuffle_epi8(_mm512_load_si512((const void*)vec), swapPairs);
+    COMPILER_BARRIER();
+    vec_swapped_arr = (Complex_int16*)&vec_swapped;
+    COMPILER_BARRIER();
+    vec_swapped2 = _mm512_shuffle_epi8(_mm512_load_si512((const void*)&vec[16]), swapPairs);
+    COMPILER_BARRIER();
+    vec_swapped_arr2 = (Complex_int16*)&vec_swapped2;
+    COMPILER_BARRIER();
+    
+    a_b = _mm512_load_si512((const void*)&mat[0]);
+    d_c = _mm512_set1_epi32(*(int32_t*)&vec_swapped_arr[0]);
+    c_minus_d = _mm512_mullo_epi16(addSub1, _mm512_set1_epi32(*(int32_t*)&vec[0]));
+    real_res = _mm512_madd_epi16(a_b, c_minus_d);
+    imag_res = _mm512_madd_epi16(a_b, d_c);
+    for(int c = 1; c < 16; c++) {
+        a_b = _mm512_load_si512((const void*)&mat[c*16]);
+        d_c = _mm512_set1_epi32(*(int32_t*)&vec_swapped_arr[c]);
+        c_minus_d = _mm512_mullo_epi16(addSub1, _mm512_set1_epi32(*(int32_t*)&vec[c]));
+        real_res = _mm512_dpwssds_epi32(real_res, a_b, c_minus_d);
+        imag_res = _mm512_dpwssds_epi32(imag_res, a_b, d_c);
+    }
+    for(int c = 16; c < 32; c++) {
+        a_b = _mm512_load_si512((const void*)&mat[c*16]);
+        d_c = _mm512_set1_epi32(*(int32_t*)&vec_swapped_arr2[c-16]);
+        c_minus_d = _mm512_mullo_epi16(addSub1, _mm512_set1_epi32(*(int32_t*)&vec[c]));
+        real_res = _mm512_dpwssds_epi32(real_res, a_b, c_minus_d);
+        imag_res = _mm512_dpwssds_epi32(imag_res, a_b, d_c);
+    }
+    COMPILER_BARRIER();
+    _mm512_storeu_si512(res, real_res);
+    COMPILER_BARRIER();
+    _mm512_mask_storeu_epi16((void*)((uintptr_t)res+2), 0x55555555, imag_res);
 }
 
 static const int32_t temp2[16] = {1,0,3,2,5,4,7,6,9,8,11,10,13,12,15,14};
@@ -141,39 +326,47 @@ const __m512i swapPairsFloat = _mm512_loadu_si512((const void*)temp2);
 static const float temp3[16] = {1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1,1,-1};
 const __m512 addSub = _mm512_loadu_ps((const void*)temp3);
 void matvecFloat_16x16(const MKL_Complex8* mat, const MKL_Complex8* vec, MKL_Complex8* res) {
-    __m512 a_b, a_b1, c_c, d_d, ac_bc, ad_bd, bd_ad, bd_ad1;
-    __m512 ac_bc_accu, ad_bd_accu, ac_bc_accu1, ad_bd_accu1;
+    __m512 a_b, a_b1, a_b2, a_b3, c_c, d_d, ac_bc, ad_bd, bd_ad, bd_ad1;
+    __m512 ac_bc_accu, ad_bd_accu, ac_bc_accu1, ad_bd_accu1, ac_bc_accu2, ad_bd_accu2, ac_bc_accu3, ad_bd_accu3;
     MKL_Complex8 val;
     val = vec[0];
+    // asm (
+    //     "vmovups %[A_B], zmmword ptr %[MAT]"
+    //     : [A_B] "=v" (a_b)
+    //     : [MAT] "rm" (mat)
+    //     :
+    //     );
     a_b = _mm512_loadu_ps((const void*)&mat[0]);
     a_b1 = _mm512_loadu_ps((const void*)&mat[8]);
     c_c = _mm512_set1_ps(val.real);
-    d_d = _mm512_set1_ps(val.imag);
     ac_bc_accu = _mm512_mul_ps(a_b, c_c);
+    d_d = _mm512_set1_ps(val.imag);
     ad_bd_accu = _mm512_mul_ps(a_b, d_d);
     c_c = _mm512_set1_ps(val.real);
-    d_d = _mm512_set1_ps(val.imag);
     ac_bc_accu1 = _mm512_mul_ps(a_b1, c_c);
+    d_d = _mm512_set1_ps(val.imag);
     ad_bd_accu1 = _mm512_mul_ps(a_b1, d_d);
+
     for(int c = 1; c < 16; c++) {
         val = vec[c];
         a_b = _mm512_loadu_ps((const void*)&mat[c*16]);
         a_b1 = _mm512_loadu_ps((const void*)&mat[c*16+8]);
         c_c = _mm512_set1_ps(val.real);
-        d_d = _mm512_set1_ps(val.imag);
         ac_bc_accu = _mm512_fmadd_ps(a_b, c_c, ac_bc_accu);
+        d_d = _mm512_set1_ps(val.imag);
         ad_bd_accu = _mm512_fmadd_ps(a_b, d_d, ad_bd_accu);
         c_c = _mm512_set1_ps(val.real);
-        d_d = _mm512_set1_ps(val.imag);
         ac_bc_accu1 = _mm512_fmadd_ps(a_b1, c_c, ac_bc_accu1);
+        d_d = _mm512_set1_ps(val.imag);
         ad_bd_accu1 = _mm512_fmadd_ps(a_b1, d_d, ad_bd_accu1);
     }
     // Swap even and odd in ad_bd
     bd_ad = _mm512_permutevar_ps(ad_bd_accu, swapPairsFloat);
+    ac_bc_accu = _mm512_fnmadd_ps(bd_ad, addSub, ac_bc_accu);
+
     bd_ad1 = _mm512_permutevar_ps(ad_bd_accu1, swapPairsFloat);
 
     // Fused negate multiply add -> simplified to multiply, add
-    ac_bc_accu = _mm512_fnmadd_ps(bd_ad, addSub, ac_bc_accu);
     ac_bc_accu1 = _mm512_fnmadd_ps(bd_ad1, addSub, ac_bc_accu1);
 
     // Store results in the array
@@ -183,7 +376,15 @@ void matvecFloat_16x16(const MKL_Complex8* mat, const MKL_Complex8* vec, MKL_Com
 
 void matvecInt16(const Complex_int16* mat, int m, int k, const Complex_int16* vec, Complex_int16* res) {
     if(m == 16 && k == 16)
-        matvecInt16(mat, m, k, vec, res);
+        matvecInt16_16x16(mat, vec, res);
+    else if(m == 32 && k == 16)
+        matvecInt16_32x16(mat, vec, res);
+    else if(m == 32 && k == 32)
+        matvecInt16_32x32(mat, vec, res);
+    else if(m == 16 && k == 32)
+        matvecInt16_16x32(mat, vec, res);
+    else if(m == 64 && k == 16)
+        matvecInt16_64x16(mat, vec, res);
     else {
         fprintf(stderr, "Unsupported dimensions.\n");
         exit(1);
@@ -217,7 +418,7 @@ double benchJITCGEMM(MKL_Complex8* a, MKL_Complex8* b, MKL_Complex8* c, MKL_INT 
 double benchInt16(const Complex_int16* mat, int m, int k, const Complex_int16* vec, Complex_int16* res, int numIter) {
     double start = getTime();
     for(int i = 0; i < numIter; i++)
-        matvecInt16_16x16(mat, vec, res);
+        matvecInt16(mat, m, k, vec, res);
     return timeSince(start);
 }
 
@@ -269,20 +470,20 @@ int main(int argc, char** argv) {
         b[i] = {(float)vec[i].real, (float)vec[i].imag};
         b1[i] = {(float)vec[i].real, (float)vec[i].imag};
     }
+    //double floatTime = benchFloat(a1, m, k, b1, c1, numIter);
     double myTime = benchInt16(mat, m, k, vec, res, numIter);
     double mklTime = benchJITCGEMM(a, b, c, m, k, numIter);
-    double floatTime = benchFloat(a1, m, k, b1, c1, numIter);
     for(int i = 0; i < m; i++)  std::cout << "(" << res[i].real << "," << res[i].imag << ")";
     std::cout << std::endl;
     for(int i = 0; i < m; i++)  std::cout << "(" << c[i].real << "," << c[i].imag << ")";
     std::cout << std::endl;
-    for(int i = 0; i < m; i++)  std::cout << "(" << c1[i].real << "," << c1[i].imag << ")";
-    std::cout << std::endl;
+    // for(int i = 0; i < m; i++)  std::cout << "(" << c1[i].real << "," << c1[i].imag << ")";
+    // std::cout << std::endl;
     printf("\n        ---------- \n\n");
     printf("     %ld iterations, (%dx%d) * (%dx%d)\n", numIter, m, k, k, 1);
     printf("MKL JIT cgemm: %.10f µs per iteration\n", mklTime/(double)numIter);
     printf(" int16 matvec: %.10f µs per iteration\n", myTime/(double)numIter);
-    printf(" float matvec: %.10f µs per iteration\n", floatTime/(double)numIter);
+    //printf(" float matvec: %.10f µs per iteration\n", floatTime/(double)numIter);
 
     std::cout << "  " << BOLDGREEN << std::fixed << std::setprecision(2) << mklTime/myTime << "x" << RESET << " MKL JIT cgemm" << std::endl;
 

@@ -1,6 +1,6 @@
 .PHONY: inv com clean com_example volk deinterleave_bench mkl cgemv fused jit matvec
 matvec:
-	g++ -m64 -I/usr/local/include/Zydis -I${MKLROOT}/include -o matvec matvec_int16.cpp -std=c++17 -march=native -Wl,--no-as-needed -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group,--no-as-needed -lpthread -lm -ldl /usr/local/lib/libZydis.a -O3
+	g++ -m64 -I/usr/local/include/Zydis -I${MKLROOT}/include -o matvec matvec_int16.cpp -std=c++17 -Wl,--no-as-needed -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group,--no-as-needed -lpthread -lm -ldl /usr/local/lib/libZydis.a -O3 -funroll-loops -march=native
 jit:
 	g++ -g -m64 -I/usr/local/include/Zydis -I${MKLROOT}/include -o jit jit_cgemm.cpp -std=c++17 -march=native -Wl,--no-as-needed -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group,--no-as-needed -lpthread -lm -ldl /usr/local/lib/libZydis.a
 fused:
